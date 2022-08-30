@@ -1,5 +1,4 @@
 ## DSCP classify configuration
-define wan = { eth1, wg0 }
 define lan = { br-lan }
 define bytes_ht = 500000
 define bytes_bulk = 10000000
