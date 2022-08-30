@@ -1,0 +1,2 @@
+This script uses the layer-cake queue setup and additionally restores DSCP marks upon packet ingress from its conntrack mark.
+This script requires the kmod-sched-ctinfo package.
