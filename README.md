@@ -12,7 +12,7 @@ This should be used in conjunction with layer-cake SQM queue with ctinfo configu
 
 **Your SQM config must use the new 'layer_cake_ct.qos' queue setup script.**
 
-Recommended SQM config for the device:
+Tested working SQM config for the script:
 
 | Config parameter | Value |
 | ----------- | ----------- |
