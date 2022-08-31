@@ -120,24 +120,24 @@ map ct_wmm {
     elements = {
         $cs0 : jump dscp_set_cs0,   # WMM BE
         $cs1 : jump dscp_set_cs1,   # WMM BK
-        $af11 : jump dscp_set_af11, # WMM BK
-        $af12 : jump dscp_set_af12, # WMM BK
-        $af13 : jump dscp_set_af13, # WMM BK    
-        $cs2 : jump dscp_set_cs2,   # WMM BK
-        $af21 : jump dscp_set_cs3,  # WMM BE from BK
-        $af22 : jump dscp_set_cs3,  # WMM BE from BK
-        $af23 : jump dscp_set_cs3,  # WMM BE from BK
-        $cs3 : jump dscp_set_af41,  # WMM VI from BE
-        $af31 : jump dscp_set_af41, # WMM VI from BE
-        $af32 : jump dscp_set_af42, # WMM VI from BE
-        $af33 : jump dscp_set_af43, # WMM VI from BE
+        $af11 : jump dscp_set_cs0,  # WMM BE (RFC-8325)
+        $af12 : jump dscp_set_cs0,  # WMM BE (RFC-8325)
+        $af13 : jump dscp_set_cs0,  # WMM BE (RFC-8325)  
+        $cs2 : jump dscp_set_cs0,   # WMM BE (RFC-8325)
+        $af21 : jump dscp_set_cs3,  # WMM BE (RFC-8325)
+        $af22 : jump dscp_set_cs3,  # WMM BE (RFC-8325)
+        $af23 : jump dscp_set_cs3,  # WMM BE (RFC-8325)
+        $cs3 : jump dscp_set_cs4,   # WMM VI (RFC-8325)
+        $af31 : jump dscp_set_cs4,  # WMM VI (RFC-8325)
+        $af32 : jump dscp_set_cs4,  # WMM VI (RFC-8325)
+        $af33 : jump dscp_set_cs4,  # WMM VI (RFC-8325)
         $cs4 : jump dscp_set_cs4,   # WMM VI
-        $af41 : jump dscp_set_af41, # WMM VI
-        $af42 : jump dscp_set_af42, # WMM VI
-        $af43 : jump dscp_set_af43, # WMM VI
+        $af41 : jump dscp_set_cs4,  # WMM VI (RFC-8325)
+        $af42 : jump dscp_set_cs4,  # WMM VI (RFC-8325)
+        $af43 : jump dscp_set_cs4,  # WMM VI (RFC-8325)
         $cs5 : jump dscp_set_cs5,   # WMM VI
-        $va : jump dscp_set_cs6,    # WMM VO from VI
-        $ef : jump dscp_set_cs6,    # WMM VO from VI
+        $va : jump dscp_set_cs6,    # WMM VO (RFC-8325)
+        $ef : jump dscp_set_cs6,    # WMM VO (RFC-8325)
         $cs6 : jump dscp_set_cs6,   # WMM VO
         $cs7 : jump dscp_set_cs7,   # WMM VO
     }
