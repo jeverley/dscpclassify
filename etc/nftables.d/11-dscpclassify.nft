@@ -1,7 +1,6 @@
 ## DSCP classify configuration
 define lan = { br-lan }
 define bytes_ht = 500000
-define bytes_bulk = 10000000
 
 ## DSCP matching rules for proto, sports, daddr
 map rules_proto_dport_daddr {
@@ -203,21 +202,19 @@ chain dscp_dynamic_rt {
     ct mark and $ct_ht == 0 ct avgpkt 0-450 ct mark set ct mark and $ct_unused_dyn or $cs4
 }
 
-# Mark high-throughput and bulk threaded connections to a service
+# Mark high-throughput threaded connections to a service
 chain dscp_threaded_service {
     ct bytes < $bytes_ht return
     update @dscp_threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 30s }
     update @dscp_threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 30s }
-    ct bytes > $bytes_bulk ct mark set ct mark and $ct_unused_dyn or $cs1 return
     ct mark set ct mark and $ct_unused_dyn or $af11
 }
 
-# Mark high-throughput and bulk threaded connections to a service
+# Mark high-throughput threaded connections to a service
 chain dscp_threaded_service_response {
     ct bytes < $bytes_ht return
     update @dscp_threaded_services { meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th sport timeout 30s }
     update @dscp_threaded_services6 { meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport timeout 30s }
-    ct bytes > $bytes_bulk ct mark set ct mark and $ct_unused_dyn or $cs1 return
     ct mark set ct mark and $ct_unused_dyn or $af11
 }
 
