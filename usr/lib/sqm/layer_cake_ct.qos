@@ -41,8 +41,8 @@ ingress() {
 
     # redirect all IP packets arriving in $IFACE to ifb0
     # set DSCP mark from conntrack mark
-    $TC filter add dev $IFACE parent ffff: protocol all prio 10 u32 \
-    match u32 0 0 flowid 1:1 action ctinfo dscp 0x0000003f mirred egress redirect dev $DEV
+    $TC filter add dev $IFACE parent ffff: matchall \
+    action ctinfo dscp 0x0000003f mirred egress redirect dev $DEV
 }
 
 sqm_prepare_script() {
