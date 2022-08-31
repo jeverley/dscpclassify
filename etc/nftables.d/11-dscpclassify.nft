@@ -174,19 +174,19 @@ chain dscp_dynamic {
     ## Detect connection threading by counting new connections
     ct packets < 2 goto dscp_detect_threading
 
-    ## Downgrade high-throughput and bulk threaded service connections
+    ## Assess threaded service connections for downgrade to high-throughput class (AF11)
     meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport @dscp_threaded_services goto dscp_threaded_service
     meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport @dscp_threaded_services6 goto dscp_threaded_service
     meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th sport @dscp_threaded_services goto dscp_threaded_service_response
     meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport @dscp_threaded_services6 goto dscp_threaded_service_response
 
-    ## Downgrade bulk connections from threaded client source ports (i.e. P2P)
+    ## Assess threaded client connections (i.e. P2P) for downgrade to bulk class (CS1)
     meta l4proto . ip saddr . th sport @dscp_threaded_clients goto dscp_threaded_client
     meta l4proto . ip6 saddr . th sport @dscp_threaded_clients6 goto dscp_threaded_client
     meta l4proto . ip daddr . th dport @dscp_threaded_clients goto dscp_threaded_client_response
     meta l4proto . ip6 daddr . th dport @dscp_threaded_clients6 goto dscp_threaded_client_response
 
-    ## Return packets that will not be considered for real-time priority
+    ## Assess packets for real-time class (CS4) 
     meta l4proto udp ct state != new th dport != { 80, 443 } th sport != { 80, 443 } jump dscp_dynamic_rt
 }
 
