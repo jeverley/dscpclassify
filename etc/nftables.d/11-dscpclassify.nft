@@ -111,31 +111,31 @@ map ct_dscp {
     }
 }
 
-## Conntrack mark to WMM class map
+## Conntrack mark to WMM class map (RFC-8325)
 map ct_wmm {
     typeof ct mark : verdict
     elements = {
         $cs0 : jump dscp_set_cs0,   # WMM BE
         $cs1 : jump dscp_set_cs1,   # WMM BK
-        $af11 : jump dscp_set_cs0,  # WMM BE (RFC-8325)
-        $af12 : jump dscp_set_cs0,  # WMM BE (RFC-8325)
-        $af13 : jump dscp_set_cs0,  # WMM BE (RFC-8325)  
-        $cs2 : jump dscp_set_cs0,   # WMM BE (RFC-8325)
-        $af21 : jump dscp_set_cs3,  # WMM BE (RFC-8325)
-        $af22 : jump dscp_set_cs3,  # WMM BE (RFC-8325)
-        $af23 : jump dscp_set_cs3,  # WMM BE (RFC-8325)
-        $cs3 : jump dscp_set_cs4,   # WMM VI (RFC-8325)
-        $af31 : jump dscp_set_cs4,  # WMM VI (RFC-8325)
-        $af32 : jump dscp_set_cs4,  # WMM VI (RFC-8325)
-        $af33 : jump dscp_set_cs4,  # WMM VI (RFC-8325)
+        $af11 : jump dscp_set_cs0,  # WMM BE
+        $af12 : jump dscp_set_cs0,  # WMM BE
+        $af13 : jump dscp_set_cs0,  # WMM BE  
+        $cs2 : jump dscp_set_cs0,   # WMM BE
+        $af21 : jump dscp_set_cs3,  # WMM BE
+        $af22 : jump dscp_set_cs3,  # WMM BE
+        $af23 : jump dscp_set_cs3,  # WMM BE
+        $cs3 : jump dscp_set_cs4,   # WMM VI
+        $af31 : jump dscp_set_cs4,  # WMM VI
+        $af32 : jump dscp_set_cs4,  # WMM VI
+        $af33 : jump dscp_set_cs4,  # WMM VI
         $cs4 : jump dscp_set_cs4,   # WMM VI
-        $af41 : jump dscp_set_cs4,  # WMM VI (RFC-8325)
-        $af42 : jump dscp_set_cs4,  # WMM VI (RFC-8325)
-        $af43 : jump dscp_set_cs4,  # WMM VI (RFC-8325)
+        $af41 : jump dscp_set_cs4,  # WMM VI
+        $af42 : jump dscp_set_cs4,  # WMM VI
+        $af43 : jump dscp_set_cs4,  # WMM VI
         $cs5 : jump dscp_set_cs5,   # WMM VI
-        $va : jump dscp_set_cs6,    # WMM VO (RFC-8325)
-        $ef : jump dscp_set_cs6,    # WMM VO (RFC-8325)
-        $cs6 : jump dscp_set_cs6,   # WMM VO
+        $va : jump dscp_set_cs6,    # WMM VO
+        $ef : jump dscp_set_cs6,    # WMM VO
+        $cs6 : jump dscp_set_cs7,   # WMM VO
         $cs7 : jump dscp_set_cs7,   # WMM VO
     }
 }
@@ -171,26 +171,26 @@ map dscp_ct {
 
 ## Classify connections to the router
 chain dscp_hook_input {
-    type filter hook input priority 1; policy accept;
+    type filter hook input priority 1; policy accept
     ct direction original ct mark and $ct_dyn_dscp == 0 jump dscp_match
     ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
 }
 
 ## Classify and DSCP mark connections from/forwarded via for the router
 chain dscp_hook_postrouting {
-    type filter hook postrouting priority 1; policy accept;
+    type filter hook postrouting priority 1; policy accept
     ct direction original ct mark and $ct_dyn_dscp == 0 jump dscp_match
     ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
     oifname $lan ct mark and $ct_dscp vmap @ct_wmm return
     ct mark and $ct_dscp vmap @ct_dscp
 }
 
-## Store any LAN client's specified DSCP in conntrack mark (comment out if undesired)
+## Store any LAN client's specified DSCP (excluding CS6/7) in the conntrack mark (comment out if undesired)
 chain dscp_hook_prerouting {
-    type filter hook prerouting priority 1; policy accept;
+    type filter hook prerouting priority 1; policy accept
     iifname != $lan return
-    ip dscp != 0 ip dscp vmap @dscp_ct return
-    ip6 dscp != 0 ip6 dscp vmap @dscp_ct
+    ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct return
+    ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct
 }
 
 chain dscp_match {
