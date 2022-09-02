@@ -1,9 +1,13 @@
 # nft-dscpclassify
 An nftables ruleset for OpenWrt's firewall4 for dynamically setting DSCP packet marks (this only works in OpenWrt 22.03 and above).
-This should be used in conjunction with layer-cake SQM queue with ctinfo configured to restore DSCP on the device ingress.
-The dscpclassify rules use the last 8 bits of the conntrack mark (0x000000ff).
 
-**The nftables rule file should be placed in:**
+This should be used in conjunction with layer-cake SQM queue with ctinfo configured to restore DSCP on the device ingress.
+The nft-dscpclassify rules use the last 8 bits of the conntrack mark (0x000000ff).
+
+![image](https://user-images.githubusercontent.com/46714706/188151111-9167e54d-482e-4584-b43b-0759e0ad7561.png)
+
+
+**The nftables rule file must be placed in:**
 
 "/etc/nftables.d"
 
