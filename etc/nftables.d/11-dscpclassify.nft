@@ -11,7 +11,7 @@ map rules_proto_dport_daddr {
     }
 }
 
-## DSCP matching rules for proto, dports, sports
+## DSCP matching rules for proto, sports, dports
 map rules_proto_sport_dport {
     type inet_proto . inet_service . inet_service : verdict
     flags interval
@@ -82,7 +82,7 @@ define ef = 46
 define cs6 = 48
 define cs7 = 56
 
-## Conntrack mark to DSCP class map
+## Conntrack mark to DSCP class vmap
 map ct_dscp {
     typeof ct mark : verdict
     elements = {
@@ -111,7 +111,7 @@ map ct_dscp {
     }
 }
 
-## Conntrack mark to WMM class map (RFC-8325)
+## Conntrack mark to WMM class vmap (RFC-8325)
 map ct_wmm {
     typeof ct mark : verdict
     elements = {
@@ -140,7 +140,7 @@ map ct_wmm {
     }
 }
 
-## DSCP class to conntrack mark map
+## DSCP class to conntrack mark vmap
 map dscp_ct {
     typeof ip dscp : verdict
     elements = {
@@ -172,14 +172,14 @@ map dscp_ct {
 ## Classify connections to the router
 chain dscp_hook_input {
     type filter hook input priority 1; policy accept
-    ct direction original ct mark and $ct_dyn_dscp == 0 jump dscp_match
+    ct mark and $ct_dyn_dscp == 0 ct direction original jump dscp_match
     ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
 }
 
 ## Classify and DSCP mark connections from/forwarded via for the router
 chain dscp_hook_postrouting {
     type filter hook postrouting priority 1; policy accept
-    ct direction original ct mark and $ct_dyn_dscp == 0 jump dscp_match
+    ct mark and $ct_dyn_dscp == 0 ct direction original jump dscp_match
     ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
     oifname $lan ct mark and $ct_dscp vmap @ct_wmm
     ct mark and $ct_dscp vmap @ct_dscp
@@ -238,17 +238,17 @@ chain dscp_dynamic_rt {
 ## Mark high-throughput threaded connections to a service as AF11
 chain dscp_threaded_service {
     ct bytes < $bytes_ht return
-    update @dscp_threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 60s }
-    update @dscp_threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 60s }
     ct mark set ct mark and $ct_unused_dyn or $af11
+    update @dscp_threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 60s } return
+    update @dscp_threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 60s }
 }
 
 ## Mark high-throughput threaded connections to a service as AF11
 chain dscp_threaded_service_response {
     ct bytes < $bytes_ht return
-    update @dscp_threaded_services { meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th sport timeout 60s }
-    update @dscp_threaded_services6 { meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport timeout 60s }
     ct mark set ct mark and $ct_unused_dyn or $af11
+    update @dscp_threaded_services { meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th sport timeout 60s } return
+    update @dscp_threaded_services6 { meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport timeout 60s }
 }
 
 ## Mark threaded bulk clients as CS1
