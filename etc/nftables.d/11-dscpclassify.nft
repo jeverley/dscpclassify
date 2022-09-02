@@ -7,7 +7,7 @@ map rules_proto_dport_daddr {
     type inet_proto . inet_service . ipv4_addr : verdict
     flags interval
     elements = {
-        udp . 1000-1150 . 13.104.0.0/14 : jump ct_set_af41, # Xbox Cloud Gaming (UK servers)
+        udp . 1000-1150 . 13.104.0.0/14 : jump ct_set_af41, # Xbox Cloud Gaming (Western Europe servers)
     }
 }
 
