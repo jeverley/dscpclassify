@@ -1,6 +1,6 @@
 ## DSCP classify configuration
 define lan = { br-lan }
-define bytes_ht = 500000
+define bytes_ht = 1000000
 
 ## DSCP matching rules for proto, sports, daddr
 map rules_proto_dport_daddr {
@@ -46,9 +46,7 @@ map rules_proto_dport {
 ## DSCP matching rules for proto
 map rules_proto {
     type inet_proto : verdict
-    elements = {
-        icmp : jump ct_set_cs5
-    }
+    #elements = { icmp : jump ct_set_cs5 }
 }
 
 ## Masks for extracting/storing data in the conntrack mark
@@ -187,11 +185,15 @@ chain dscp_hook_postrouting {
     ct mark and $ct_dscp vmap @ct_dscp
 }
 
-chain dscp_match {
-    ## Store local client's specified DSCP in conntrack mark (comment out if undesired)
-    iifname $lan ip dscp != 0 ip dscp vmap @dscp_ct return
-    iifname $lan ip6 dscp != 0 ip6 dscp vmap @dscp_ct return
+## Store any LAN client's specified DSCP in conntrack mark (comment out if undesired)
+chain dscp_hook_prerouting {
+    type filter hook prerouting priority 1; policy accept;
+    iifname != $lan return
+    ip dscp != 0 ip dscp vmap @dscp_ct return
+    ip6 dscp != 0 ip6 dscp vmap @dscp_ct
+}
 
+chain dscp_match {
     ## Match packets against user defined rules
     meta l4proto . th dport . ip daddr vmap @rules_proto_dport_daddr return
     meta l4proto . th sport . th dport vmap @rules_proto_sport_dport return
