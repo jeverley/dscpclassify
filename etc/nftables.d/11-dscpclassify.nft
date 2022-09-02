@@ -7,7 +7,7 @@ map rules_proto_dport_daddr {
     type inet_proto . inet_service . ipv4_addr : verdict
     flags interval
     elements = {
-        udp . 1000-1150 . 13.104.0.0/14 : jump ct_set_af41, # Xbox Cloud Gaming (Western Europe servers)
+        udp . 1000-1150 . 13.104.0.0/14 : jump ct_set_af41, # Xbox Cloud Gaming (UK servers)
     }
 }
 
@@ -119,7 +119,7 @@ map ct_wmm {
         $cs1 : jump dscp_set_cs1,   # WMM BK
         $af11 : jump dscp_set_cs0,  # WMM BE
         $af12 : jump dscp_set_cs0,  # WMM BE
-        $af13 : jump dscp_set_cs0,  # WMM BE  
+        $af13 : jump dscp_set_cs0,  # WMM BE
         $cs2 : jump dscp_set_cs0,   # WMM BE
         $af21 : jump dscp_set_cs3,  # WMM BE
         $af22 : jump dscp_set_cs3,  # WMM BE
@@ -179,18 +179,12 @@ chain dscp_hook_input {
 ## Classify and DSCP mark connections from/forwarded via for the router
 chain dscp_hook_postrouting {
     type filter hook postrouting priority 1; policy accept
+    iifname eth1 counter
+    oifname br-lan counter
     ct direction original ct mark and $ct_dyn_dscp == 0 jump dscp_match
     ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
     oifname $lan ct mark and $ct_dscp vmap @ct_wmm return
     ct mark and $ct_dscp vmap @ct_dscp
-}
-
-## Store any LAN client's specified DSCP (excluding CS6/7) in the conntrack mark (comment out if undesired)
-chain dscp_hook_prerouting {
-    type filter hook prerouting priority 1; policy accept
-    iifname != $lan return
-    ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct return
-    ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct
 }
 
 chain dscp_match {
@@ -199,6 +193,10 @@ chain dscp_match {
     meta l4proto . th sport . th dport vmap @rules_proto_sport_dport return
     meta l4proto . th dport vmap @rules_proto_dport return
     meta l4proto vmap @rules_proto return
+
+    ## Store any LAN client's specified DSCP (excluding CS6/7) in the conntrack mark (comment out if undesired)
+    iifname $lan ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct return
+    iifname $lan ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct return
 
     ## Uncategorised packets get dynamic conntrack mark
     ct mark set ct mark and $ct_unused or $ct_dyn
@@ -223,7 +221,7 @@ chain dscp_dynamic {
     meta l4proto . ip daddr . th dport @dscp_threaded_clients goto dscp_threaded_client_response
     meta l4proto . ip6 daddr . th dport @dscp_threaded_clients6 goto dscp_threaded_client_response
 
-    ## Assess packets for real-time class (CS4) 
+    ## Assess packets for real-time class (CS4)
     meta l4proto udp ct state != new th dport != { 80, 443 } th sport != { 80, 443 } jump dscp_dynamic_rt
 }
 
@@ -234,7 +232,7 @@ chain dscp_dynamic_rt {
     ## Mark connections exceeding 200pps as high-throughput
     meter udpht { ip saddr . ip daddr . th sport . th dport limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $ct_ht return
     meter udpht6 { ip6 saddr . ip6 daddr . th sport . th dport limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $ct_ht return
-    
+
     ## Prioritize small packet flows as real-time
     ct mark and $ct_ht == 0 ct avgpkt 0-450 ct mark set ct mark and $ct_unused_dyn or $cs4
 }
