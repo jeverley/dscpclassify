@@ -176,7 +176,7 @@ chain dscp_hook_input {
     ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
 }
 
-## Classify and DSCP mark connections from/forwarded via for the router
+## Classify and DSCP mark connections from/forwarded via the router
 chain dscp_hook_postrouting {
     type filter hook postrouting priority 1; policy accept
     ct mark and $ct_dyn_dscp == 0 ct direction original jump dscp_match
