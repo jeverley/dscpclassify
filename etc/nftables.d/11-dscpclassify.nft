@@ -7,7 +7,7 @@ map rules_proto_dport_daddr {
     type inet_proto . inet_service . ipv4_addr : verdict
     flags interval
     elements = {
-        udp . 1000-1150 . 13.104.0.0/14 : jump ct_set_af41, # Xbox Cloud Gaming (UK servers)
+        udp . 1000-1150 . 13.104.0.0/14 : goto ct_set_af41, # Xbox Cloud Gaming (UK servers)
     }
 }
 
@@ -16,9 +16,9 @@ map rules_proto_sport_dport {
     type inet_proto . inet_service . inet_service : verdict
     flags interval
     elements = {
-        udp . 50000-50019 . 3478-3481 : jump ct_set_ef,     # Teams voice
-        udp . 50020-50039 . 3478-3481 : jump ct_set_af41,   # Teams video
-        udp . 50040-50059 . 3478-3481 : jump ct_set_af21,   # Teams sharing
+        udp . 50000-50019 . 3478-3481 : goto ct_set_ef,     # Teams voice
+        udp . 50020-50039 . 3478-3481 : goto ct_set_af41,   # Teams video
+        udp . 50040-50059 . 3478-3481 : goto ct_set_af21,   # Teams sharing
     }
 }
 
@@ -27,26 +27,26 @@ map rules_proto_dport {
     type inet_proto . inet_service : verdict
     flags interval
     elements = {
-        tcp . 53 : jump ct_set_cs5,             # DNS
-        tcp . 853 : jump ct_set_cs5,            # DNS
-        tcp . 5353 : jump ct_set_cs5,           # DNS
-        udp . 53 : jump ct_set_cs5,             # DNS
-        udp . 853 : jump ct_set_cs5,            # DNS
-        udp . 5353 : jump ct_set_cs5,           # DNS
-        udp . 68 : jump ct_set_cs5,             # DHCP
-        udp . 123 : jump ct_set_cs5,            # NTP
-        tcp . 49006 : jump ct_set_af41,         # GeForce NOW
-        udp . 49003-49006 : jump ct_set_af41,   # GeForce NOW
-        tcp . 44700-44899 : jump ct_set_af41,   # Stadia
-        udp . 44700-44899 : jump ct_set_af41,   # Stadia
-        tcp . 22 : jump ct_set_cs2,             # SSH
+        tcp . 53 : goto ct_set_cs5,             # DNS
+        tcp . 853 : goto ct_set_cs5,            # DNS
+        tcp . 5353 : goto ct_set_cs5,           # DNS
+        udp . 53 : goto ct_set_cs5,             # DNS
+        udp . 853 : goto ct_set_cs5,            # DNS
+        udp . 5353 : goto ct_set_cs5,           # DNS
+        udp . 68 : goto ct_set_cs5,             # DHCP
+        udp . 123 : goto ct_set_cs5,            # NTP
+        tcp . 49006 : goto ct_set_af41,         # GeForce NOW
+        udp . 49003-49006 : goto ct_set_af41,   # GeForce NOW
+        tcp . 44700-44899 : goto ct_set_af41,   # Stadia
+        udp . 44700-44899 : goto ct_set_af41,   # Stadia
+        tcp . 22 : goto ct_set_cs2,             # SSH
     }
 }
 
 ## DSCP matching rules for proto
 map rules_proto {
     type inet_proto : verdict
-    #elements = { icmp : jump ct_set_cs5 }
+    #elements = { icmp : goto ct_set_cs5 }
 }
 
 ## Masks for extracting/storing data in the conntrack mark
@@ -86,28 +86,28 @@ define cs7 = 56
 map ct_dscp {
     typeof ct mark : verdict
     elements = {
-        $cs0 : jump dscp_set_cs0,
-        $cs1 : jump dscp_set_cs1,
-        $af11 : jump dscp_set_af11,
-        $af12 : jump dscp_set_af12,
-        $af13 : jump dscp_set_af13,
-        $cs2 : jump dscp_set_cs2,
-        $af21 : jump dscp_set_af21,
-        $af22 : jump dscp_set_af22,
-        $af23 : jump dscp_set_af23,
-        $cs3 : jump dscp_set_cs3,
-        $af31 : jump dscp_set_af31,
-        $af32 : jump dscp_set_af32,
-        $af33 : jump dscp_set_af33,
-        $cs4 : jump dscp_set_cs4,
-        $af41 : jump dscp_set_af41,
-        $af42 : jump dscp_set_af42,
-        $af43 : jump dscp_set_af43,
-        $cs5 : jump dscp_set_cs5,
-        $va : jump dscp_set_va,
-        $ef : jump dscp_set_ef,
-        $cs6 : jump dscp_set_cs6,
-        $cs7 : jump dscp_set_cs7,
+        $cs0 : goto dscp_set_cs0,
+        $cs1 : goto dscp_set_cs1,
+        $af11 : goto dscp_set_af11,
+        $af12 : goto dscp_set_af12,
+        $af13 : goto dscp_set_af13,
+        $cs2 : goto dscp_set_cs2,
+        $af21 : goto dscp_set_af21,
+        $af22 : goto dscp_set_af22,
+        $af23 : goto dscp_set_af23,
+        $cs3 : goto dscp_set_cs3,
+        $af31 : goto dscp_set_af31,
+        $af32 : goto dscp_set_af32,
+        $af33 : goto dscp_set_af33,
+        $cs4 : goto dscp_set_cs4,
+        $af41 : goto dscp_set_af41,
+        $af42 : goto dscp_set_af42,
+        $af43 : goto dscp_set_af43,
+        $cs5 : goto dscp_set_cs5,
+        $va : goto dscp_set_va,
+        $ef : goto dscp_set_ef,
+        $cs6 : goto dscp_set_cs6,
+        $cs7 : goto dscp_set_cs7,
     }
 }
 
@@ -115,28 +115,28 @@ map ct_dscp {
 map ct_wmm {
     typeof ct mark : verdict
     elements = {
-        $cs0 : jump dscp_set_cs0,   # WMM BE
-        $cs1 : jump dscp_set_cs1,   # WMM BK
-        $af11 : jump dscp_set_cs0,  # WMM BE
-        $af12 : jump dscp_set_cs0,  # WMM BE
-        $af13 : jump dscp_set_cs0,  # WMM BE
-        $cs2 : jump dscp_set_cs0,   # WMM BE
-        $af21 : jump dscp_set_cs3,  # WMM BE
-        $af22 : jump dscp_set_cs3,  # WMM BE
-        $af23 : jump dscp_set_cs3,  # WMM BE
-        $cs3 : jump dscp_set_cs4,   # WMM VI
-        $af31 : jump dscp_set_cs4,  # WMM VI
-        $af32 : jump dscp_set_cs4,  # WMM VI
-        $af33 : jump dscp_set_cs4,  # WMM VI
-        $cs4 : jump dscp_set_cs4,   # WMM VI
-        $af41 : jump dscp_set_cs4,  # WMM VI
-        $af42 : jump dscp_set_cs4,  # WMM VI
-        $af43 : jump dscp_set_cs4,  # WMM VI
-        $cs5 : jump dscp_set_cs5,   # WMM VI
-        $va : jump dscp_set_cs6,    # WMM VO
-        $ef : jump dscp_set_cs6,    # WMM VO
-        $cs6 : jump dscp_set_cs7,   # WMM VO
-        $cs7 : jump dscp_set_cs7,   # WMM VO
+        $cs0 : goto dscp_set_cs0,   # WMM BE
+        $cs1 : goto dscp_set_cs1,   # WMM BK
+        $af11 : goto dscp_set_cs0,  # WMM BE
+        $af12 : goto dscp_set_cs0,  # WMM BE
+        $af13 : goto dscp_set_cs0,  # WMM BE
+        $cs2 : goto dscp_set_cs0,   # WMM BE
+        $af21 : goto dscp_set_cs3,  # WMM BE
+        $af22 : goto dscp_set_cs3,  # WMM BE
+        $af23 : goto dscp_set_cs3,  # WMM BE
+        $cs3 : goto dscp_set_cs4,   # WMM VI
+        $af31 : goto dscp_set_cs4,  # WMM VI
+        $af32 : goto dscp_set_cs4,  # WMM VI
+        $af33 : goto dscp_set_cs4,  # WMM VI
+        $cs4 : goto dscp_set_cs4,   # WMM VI
+        $af41 : goto dscp_set_cs4,  # WMM VI
+        $af42 : goto dscp_set_cs4,  # WMM VI
+        $af43 : goto dscp_set_cs4,  # WMM VI
+        $cs5 : goto dscp_set_cs5,   # WMM VI
+        $va : goto dscp_set_cs6,    # WMM VO
+        $ef : goto dscp_set_cs6,    # WMM VO
+        $cs6 : goto dscp_set_cs7,   # WMM VO
+        $cs7 : goto dscp_set_cs7,   # WMM VO
     }
 }
 
@@ -144,28 +144,28 @@ map ct_wmm {
 map dscp_ct {
     typeof ip dscp : verdict
     elements = {
-        cs0 : jump ct_set_cs0,
-        cs1 : jump ct_set_cs1,
-        af11 : jump ct_set_af11,
-        af12 : jump ct_set_af12,
-        af13 : jump ct_set_af13,
-        cs2 : jump ct_set_cs2,
-        af21 : jump ct_set_af21,
-        af22 : jump ct_set_af22,
-        af23 : jump ct_set_af23,
-        cs3 : jump ct_set_cs3,
-        af31 : jump ct_set_af31,
-        af32 : jump ct_set_af32,
-        af33 : jump ct_set_af33,
-        cs4 : jump ct_set_cs4,
-        af41 : jump ct_set_af41,
-        af42 : jump ct_set_af42,
-        af43 : jump ct_set_af43,
-        cs5 : jump ct_set_cs5,
-        44 : jump ct_set_va,
-        ef : jump ct_set_ef,
-        cs6 : jump ct_set_cs6,
-        cs7 : jump ct_set_cs7,
+        cs0 : goto ct_set_cs0,
+        cs1 : goto ct_set_cs1,
+        af11 : goto ct_set_af11,
+        af12 : goto ct_set_af12,
+        af13 : goto ct_set_af13,
+        cs2 : goto ct_set_cs2,
+        af21 : goto ct_set_af21,
+        af22 : goto ct_set_af22,
+        af23 : goto ct_set_af23,
+        cs3 : goto ct_set_cs3,
+        af31 : goto ct_set_af31,
+        af32 : goto ct_set_af32,
+        af33 : goto ct_set_af33,
+        cs4 : goto ct_set_cs4,
+        af41 : goto ct_set_af41,
+        af42 : goto ct_set_af42,
+        af43 : goto ct_set_af43,
+        cs5 : goto ct_set_cs5,
+        44 : goto ct_set_va,
+        ef : goto ct_set_ef,
+        cs6 : goto ct_set_cs6,
+        cs7 : goto ct_set_cs7,
     }
 }
 
@@ -179,24 +179,22 @@ chain dscp_hook_input {
 ## Classify and DSCP mark connections from/forwarded via for the router
 chain dscp_hook_postrouting {
     type filter hook postrouting priority 1; policy accept
-    iifname eth1 counter
-    oifname br-lan counter
     ct direction original ct mark and $ct_dyn_dscp == 0 jump dscp_match
     ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
-    oifname $lan ct mark and $ct_dscp vmap @ct_wmm return
+    oifname $lan ct mark and $ct_dscp vmap @ct_wmm
     ct mark and $ct_dscp vmap @ct_dscp
 }
 
 chain dscp_match {
     ## Match packets against user defined rules
-    meta l4proto . th dport . ip daddr vmap @rules_proto_dport_daddr return
-    meta l4proto . th sport . th dport vmap @rules_proto_sport_dport return
-    meta l4proto . th dport vmap @rules_proto_dport return
-    meta l4proto vmap @rules_proto return
+    meta l4proto . th dport . ip daddr vmap @rules_proto_dport_daddr
+    meta l4proto . th sport . th dport vmap @rules_proto_sport_dport
+    meta l4proto . th dport vmap @rules_proto_dport
+    meta l4proto vmap @rules_proto
 
     ## Store any LAN client's specified DSCP (excluding CS6/7) in the conntrack mark (comment out if undesired)
-    iifname $lan ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct return
-    iifname $lan ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct return
+    iifname $lan ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct
+    iifname $lan ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct
 
     ## Uncategorised packets get dynamic conntrack mark
     ct mark set ct mark and $ct_unused or $ct_dyn
