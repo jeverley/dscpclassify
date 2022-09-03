@@ -84,7 +84,7 @@ define cs7 = 56
 
 ## Conntrack mark to DSCP class vmap
 map ct_dscp {
-    typeof ct mark : verdict
+    type mark : verdict
     elements = {
         $cs0 : goto dscp_set_cs0,
         $cs1 : goto dscp_set_cs1,
@@ -113,7 +113,7 @@ map ct_dscp {
 
 ## Conntrack mark to WMM class vmap (RFC-8325)
 map ct_wmm {
-    typeof ct mark : verdict
+    type mark : verdict
     elements = {
         $cs0 : goto dscp_set_cs0,   # WMM BE
         $cs1 : goto dscp_set_cs1,   # WMM BK
@@ -142,7 +142,7 @@ map ct_wmm {
 
 ## DSCP class to conntrack mark vmap
 map dscp_ct {
-    typeof ip dscp : verdict
+    type dscp : verdict
     elements = {
         cs0 : goto ct_set_cs0,
         cs1 : goto ct_set_cs1,
