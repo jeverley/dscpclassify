@@ -1,0 +1,15 @@
+#!/bin/sh /etc/rc.common
+
+START=20
+USE_PROCD=1
+
+start_service() {
+	nft delete table inet dscpclassify 2>/dev/null
+	nft -f /etc/dscpclassify.d/dscpclassify.nft
+	logger -t dscpclassify "Service started"
+}
+
+stop_service() {
+	nft delete table inet dscpclassify 2>/dev/null
+	logger -t dscpclassify "Service stopped"
+}
