@@ -11,7 +11,9 @@ To install the dscpclassify service via command line you can use the following:
 ```
 opkg update
 mkdir -p "/etc/dscpclassify.d"
+[ -f /etc/dscpclassify.d/dscpclassify.nft ] && rm /etc/dscpclassify.d/dscpclassify.nft
 wget https://raw.githubusercontent.com/jeverley/nft-dscpclassify/main/etc/dscpclassify.d/dscpclassify.nft -P /etc/dscpclassify.d
+[ -f /etc/init.d/dscpclassify ] && rm /etc/init.d/dscpclassify
 wget https://raw.githubusercontent.com/jeverley/nft-dscpclassify/main/etc/init.d/dscpclassify -P /etc/init.d
 chmod +x "/etc/init.d/dscpclassify"
 /etc/init.d/dscpclassify enable
@@ -25,7 +27,9 @@ To install the layer_cake_ct qdisc via command line you can use the following:
 ```
 opkg update
 opkg install kmod-sched-ctinfo
+[ -f /usr/lib/sqm/layer_cake_ct.qos ] && rm /usr/lib/sqm/layer_cake_ct.qos
 wget https://raw.githubusercontent.com/jeverley/nft-dscpclassify/main/usr/lib/sqm/layer_cake_ct.qos -P /usr/lib/sqm
+[ -f /usr/lib/sqm/layer_cake_ct.qos.help ] && rm /usr/lib/sqm/layer_cake_ct.qos.help
 wget https://raw.githubusercontent.com/jeverley/nft-dscpclassify/main/usr/lib/sqm/layer_cake_ct.qos.help -P /usr/lib/sqm
 ```
 
