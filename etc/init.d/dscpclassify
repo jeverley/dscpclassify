@@ -56,6 +56,7 @@ dscp() {
 	esac
 
 	logger -t dscpclassify "Invalid dscp option value in '/etc/config/dscpclassify'"
+	rule=""
 	return 1
 }
 
