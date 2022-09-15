@@ -3,9 +3,135 @@
 START=20
 USE_PROCD=1
 
+mklist() {
+	echo "$*" | tr '\n' ' ' | sed -e 's/^\s*//' -e 's/\s*$//' -e 's/\s\+/, /g'
+}
+
+proto() {
+	echo "meta l4proto { $(mklist "$@") }"
+}
+
+iifname() {
+	echo "iifname { $(mklist "$@") }"
+}
+
+oifname() {
+	echo "oifname { $(mklist "$@") }"
+}
+
+src() {
+	local devices="$(fw4 -q zone "$1")"
+	echo "$(iifname "$devices"))"
+}
+
+dest() {
+	local devices="$(fw4 -q zone "$1")"
+	echo "$(oifname "$devices"))"
+}
+
+dport() {
+	echo "th dport { $(mklist "$@") }"
+}
+
+daddr() {
+	echo "ip daddr { $(mklist "$@") }"
+}
+
+sport() {
+	echo "th sport { $(mklist "$@") }"
+}
+
+saddr() {
+	echo "ip saddr { $(mklist "$@") }"
+}
+
+dscp() {
+	local class="$(echo "$1" | tr 'A-Z' 'a-z')"
+
+	case "$class" in
+	"cs0" | "cs1" | "af11" | "af12" | "af13" | "cs2" | "af21" | "af22" | "af23" | "cs3" | "af31" | "af32" | "af33" | "cs4" | "af41" | "af42" | "af43" | "cs5" | "va" | "ef" | "cs6" | "cs7")
+		echo "goto ct_set_$class"
+		return 0
+		;;
+	esac
+
+	logger -t dscpclassify "Invalid dscp option value in '/etc/config/dscpclassify'"
+	return 1
+}
+
+comment() {
+	echo "comment \"$*\""
+}
+
+create_include() {
+	local lan=$(fw4 -q zone lan)
+	local wan=$(fw4 -q zone wan)
+	local ht_bytes
+
+	config_get ht_bytes defaults ht_bytes 1000000
+
+	echo "define lan = { $(mklist "$lan") }" >"/tmp/etc/dscpclassify.nft$!"
+	echo "define wan = { $(mklist "$wan") }" >>"/tmp/etc/dscpclassify.nft$!"
+	echo "define ht_bytes = $ht_bytes" >>"/tmp/etc/dscpclassify.nft$!"
+}
+
+create_rule() {
+	local rule enabled proto src dest daddr dport saddr sport dscp comment
+
+	config_get_bool enabled "$1" enabled
+	[ "$enabled" = 0 ] && return 0
+
+	config_get proto "$1" proto
+	config_get src "$1" src
+	config_get dest "$1" dest
+	config_get daddr "$1" dest_ip
+	config_get dport "$1" dest_port
+	config_get saddr "$1" src_ip
+	config_get sport "$1" src_port
+	config_get dscp "$1" dscp
+	config_get comment "$1" name
+
+	[ -n "$proto" ] && rule="$rule $(proto $proto)"
+	[ -n "$src" ] && rule="$rule $(src $src)"
+	[ -n "$dest" ] && rule="$rule $(dest $dest)"
+	[ -n "$daddr" ] && rule="$rule $(daddr $daddr)"
+	[ -n "$dport" ] && rule="$rule $(dport $dport)"
+	[ -n "$saddr" ] && rule="$rule $(saddr $saddr)"
+	[ -n "$sport" ] && rule="$rule $(sport $sport)"
+	[ -n "$dscp" ] && rule="$rule $(dscp $dscp)"
+	[ -n "$rule" ] || {
+		logger -t dscpclassify "Invalid rule in '/etc/config/dscpclassify'"
+		return 1
+	}
+	[ -n "$comment" ] && rule="$rule $(comment $comment)"
+
+	nft insert rule inet dscpclassify dscp_match "$rule"
+}
+
+list_append() {
+	list="$list"$'\n'"$1"
+}
+
+config_foreach_reverse() {
+	local list
+
+	config_foreach list_append "$2"
+	list=$(echo "$list" | sort -r)
+
+	for config in $list; do
+		"$1" "$config" "$3"
+	done
+}
+
 start_service() {
 	nft delete table inet dscpclassify 2>/dev/null
+
+	config_load dscpclassify
+	create_include
 	nft -f /etc/dscpclassify.d/dscpclassify.nft
+	config_foreach_reverse create_rule rule
+	rm -f "/tmp/etc/dscpclassify.nft$!"
+
 	logger -t dscpclassify "Service started"
 }
 
