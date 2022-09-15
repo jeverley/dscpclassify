@@ -1,0 +1,89 @@
+config defaults 'defaults'
+	option ht_bytes '1000000'
+
+config rule
+	option name 'DNS'
+	list proto 'tcp'
+	list proto 'udp'
+	list dest_port '53'
+	list dest_port '853'
+	list dest_port '5353'
+	option dscp 'cs5'
+
+config rule
+	option name 'DHCP'
+	option proto 'udp'
+	option dest_port '68'
+	option dscp 'cs5'
+
+config rule
+	option name 'NTP'
+	option proto 'udp'
+	option dest_port '123'
+	option dscp 'cs5'
+
+config rule
+	option name 'SSH'
+	option proto 'tcp'
+	option dest_port '22'
+	option dscp 'cs2'
+
+config rule
+	option name 'Xbox Cloud Gaming (UK servers)'
+	option proto 'udp'
+	option dest_ip '13.104.0.0/14'
+	option dest_port '1000-1150'
+	option dscp 'af41'
+	option family 'ipv4'
+
+config rule
+	option name 'Teams voice'
+	option proto 'udp'
+	option src_port '50000-50019'
+	option dest_port '3478-3481'
+	option dscp 'ef'
+
+config rule
+	option name 'Teams video'
+	option proto 'udp'
+	option src_port '50020-50039'
+	option dest_port '3478-3481'
+	option dscp 'af41'
+
+config rule
+	option name 'Teams sharing'
+	option proto 'udp'
+	option src_port '50040-50059'
+	option dest_port '3478-3481'
+	option dscp 'af21'
+
+config rule
+	option name 'ICMP'
+	option proto 'icmp'
+	option dscp 'cs5'
+	option enabled '0'
+
+config rule
+	option name 'GeForce NOW'
+	option proto 'tcp'
+	option dest_port '49006'
+	option dscp 'af41'
+
+config rule
+	option name 'GeForce NOW'
+	option proto 'udp'
+	option dest_port '49003-49006'
+	option dscp 'af41'
+
+config rule
+	option name 'Stadia'
+	option proto 'tcp'
+	option dest_port '44700-44899'
+	option dscp 'af41'
+
+config rule
+	option name 'Stadia'
+	option proto 'udp'
+	option dest_port '44700-44899'
+	option dscp 'af41'
+
