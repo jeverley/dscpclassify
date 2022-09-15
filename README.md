@@ -6,10 +6,9 @@ The nft-dscpclassify rules use the last 8 bits of the conntrack mark (0x000000ff
 
 ![image](https://user-images.githubusercontent.com/46714706/188151111-9167e54d-482e-4584-b43b-0759e0ad7561.png)
 
-To install the dscpclassify service via command line you can use the following:
+**To install the dscpclassify service via command line you can use the following:**
 
 ```
-opkg update
 mkdir -p "/etc/dscpclassify.d"
 [ -f "/etc/config/dscpclassify" ] && mv /etc/config/dscpclassify /etc/config/dscpclassify.bak
 rm -f /etc/dscpclassify.d/dscpclassify.nft
@@ -28,10 +27,9 @@ https://openwrt.org/docs/guide-user/firewall/firewall_configuration
 
 An working default configuration is provided with the service.
 
+**Ingress (download) DSCP marking requires the SQM queue setup script 'layer_cake_ct.qos' and the package 'kmod-sched-ctinfo'.**
 
-**To support ingress (download) DSCP marking you must use the SQM queue setup script 'layer_cake_ct.qos', this requires the package kmod-sched-ctinfo**
-
-To install the layer_cake_ct qdisc via command line you can use the following:
+**To install the layer_cake_ct qdisc via command line you can use the following:**
 
 ```
 opkg update
