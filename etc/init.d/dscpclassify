@@ -3,6 +3,12 @@
 START=20
 USE_PROCD=1
 
+lan=$(fw4 -q zone lan)
+wan=$(fw4 -q zone wan)
+
+[ -n "$lan" ] || exit
+[ -n "$wan" ] || exit
+
 mklist() {
 	echo "$*" | tr '\n' ' ' | sed -e 's/^\s*//' -e 's/\s*$//' -e 's/\s\+/, /g'
 }
@@ -186,8 +192,6 @@ config_foreach_reverse() {
 }
 
 create_include() {
-	local lan=$(fw4 -q zone lan)
-	local wan=$(fw4 -q zone wan)
 	local ht_bytes
 
 	config_get ht_bytes globals ht_bytes 1000000
@@ -201,7 +205,6 @@ create_lan_hints_rule() {
 	local lan lan_hints
 	config_get_bool lan_hints globals lan_hints 1
 	[ "$lan_hints" = 1 ] || return 0
-	lan=$(fw4 -q zone lan)
 	nft insert rule inet dscpclassify dscp_match iifname { $(mklist "$lan") } ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct
 	nft insert rule inet dscpclassify dscp_match iifname { $(mklist "$lan") } ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct
 }
@@ -214,9 +217,9 @@ setup_config_rules() {
 start_service() {
 	nft delete table inet dscpclassify 2>/dev/null
 
-	config_load dscpclassify
+	config_load dscpclassify || return 1
 	create_include
-	nft -f /etc/dscpclassify.d/dscpclassify.nft
+	nft -f /etc/dscpclassify.d/dscpclassify.nft || return 1
 	rm -f "/tmp/etc/dscpclassify.include"
 	setup_config_rules
 
