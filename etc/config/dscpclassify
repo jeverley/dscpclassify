@@ -1,6 +1,7 @@
 config global 'global'
 	option ht_bytes '1000000'
 	option lan_hints '1'
+	option wmm '1'
 
 config rule
 	option name 'DNS'
