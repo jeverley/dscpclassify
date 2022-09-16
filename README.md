@@ -6,6 +6,9 @@ The nft-dscpclassify rules use the last 8 bits of the conntrack mark (0x000000ff
 
 ![image](https://user-images.githubusercontent.com/46714706/188151111-9167e54d-482e-4584-b43b-0759e0ad7561.png)
 
+<br />
+<br />
+
 **To install the dscpclassify service via command line you can use the following:**
 
 ```
@@ -20,14 +23,27 @@ chmod +x "/etc/init.d/dscpclassify"
 /etc/init.d/dscpclassify enable
 /etc/init.d/dscpclassify start
 ```
+<br />
+<br />
 
-**The dscpclassify user rule syntax in '/etc/config/dscpclassify' follows the same syntax as OpenWrt firewall rules, with a 'dscp' option instead of 'target'**
+**The dscpclassify user rule syntax in '/etc/config/dscpclassify' follows the same syntax as OpenWrt firewall rules, the 'class' option is used to specified the desired DSCP'**
 
 https://openwrt.org/docs/guide-user/firewall/firewall_configuration
 
 An working default configuration is provided with the service.
 
-**Ingress (download) DSCP marking requires the SQM queue setup script 'layer_cake_ct.qos' and the package 'kmod-sched-ctinfo'.**
+**The service supports the following dynamic classification options**
+
+|  Config option | Description  | Type  | Default  |
+|---|---|---|---|
+| lan_hints | Adopt the DSCP class set by a LAN client  | boolean  |  1 |
+| ht_bytes  | The total bytes before a threaded service's connection is classed as High-Throughput (af13)  | int  |  1000000 |
+
+<br />
+<br />
+
+
+**Ingress DSCP marking requires the SQM queue setup script 'layer_cake_ct.qos' and the package 'kmod-sched-ctinfo'.**
 
 **To install the layer_cake_ct qdisc via command line you can use the following:**
 
@@ -41,7 +57,7 @@ wget https://raw.githubusercontent.com/jeverley/nft-dscpclassify/main/usr/lib/sq
 ```
 
 
-**Tested working SQM config for the script:**
+**Below is a tested working SQM config for use with the script:**
 
 | Config parameter | Value |
 | ----------- | ----------- |
