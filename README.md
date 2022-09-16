@@ -15,6 +15,7 @@ To install the dscpclassify service via command line you can use the following:
 mkdir -p "/etc/dscpclassify.d"
 [ -f "/etc/config/dscpclassify" ] && mv /etc/config/dscpclassify /etc/config/dscpclassify.bak
 rm -f /etc/dscpclassify.d/dscpclassify.nft
+rm -f /etc/hotplug.d/iface/21-dscpclassify
 rm -f /etc/init.d/dscpclassify
 wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/etc/config/dscpclassify -P /etc/config
 wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/etc/dscpclassify.d/dscpclassify.nft -P /etc/dscpclassify.d
