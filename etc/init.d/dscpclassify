@@ -3,11 +3,11 @@
 START=20
 USE_PROCD=1
 
-lan=$(fw4 -q zone lan)
-wan=$(fw4 -q zone wan)
+lan="$(fw4 -q zone lan)"
+wan="$(fw4 -q zone wan)"
 
-[ -n "$lan" ] || exit
-[ -n "$wan" ] || exit
+[ -n "$lan" ] || exit 0
+[ -n "$wan" ] || exit 0
 
 mklist() {
 	echo "$*" | tr '\n' ' ' | sed -e 's/^\s*//' -e 's/\s*$//' -e 's/\s\+/, /g'
@@ -169,11 +169,15 @@ create_user_rule() {
 	[ -n "$name" ] && comment "$name"
 
 	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
-		nft insert rule "inet dscpclassify dscp_match $nfproto $l4proto $oifname $dport $iifname $sport $verdict $comment"
+		echo "insert rule inet dscpclassify dscp_match $nfproto $l4proto $oifname $dport $iifname $sport $verdict $comment" >>"/tmp/etc/dscpclassify-post.include"
 		return
 	}
-	[ -n "$daddr$saddr" ] && nft insert rule "inet dscpclassify dscp_match $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport $verdict $comment"
-	[ -n "$daddr6$saddr6" ] && nft insert rule "inet dscpclassify dscp_match $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport $verdict $comment"
+	[ -n "$daddr$saddr" ] && {
+		echo "insert rule inet dscpclassify dscp_match $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport $verdict $comment" >>"/tmp/etc/dscpclassify-post.include"
+	}
+	[ -n "$daddr6$saddr6" ] && {
+		echo "insert rule inet dscpclassify dscp_match $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport $verdict $comment" >>"/tmp/etc/dscpclassify-post.include"
+	}
 }
 
 list_append() {
@@ -191,28 +195,34 @@ config_foreach_reverse() {
 	done
 }
 
-create_include() {
+create_pre_include() {
 	local ht_bytes
 
+	rm -f "/tmp/etc/dscpclassify-pre.include"
 	config_get ht_bytes globals ht_bytes 1000000
 
-	echo "define lan = { $(mklist "$lan") }" >"/tmp/etc/dscpclassify.include"
-	echo "define wan = { $(mklist "$wan") }" >>"/tmp/etc/dscpclassify.include"
-	echo "define ht_bytes = $ht_bytes" >>"/tmp/etc/dscpclassify.include"
+	echo "define lan = { $(mklist "$lan") }" >>"/tmp/etc/dscpclassify-pre.include"
+	echo "define wan = { $(mklist "$wan") }" >>"/tmp/etc/dscpclassify-pre.include"
+	echo "define ht_bytes = $ht_bytes" >>"/tmp/etc/dscpclassify-pre.include"
 }
 
-create_lan_hints_rule() {
-	local lan_hints
+create_post_include() {
+	local lan_hints wmm
 
+	rm -f "/tmp/etc/dscpclassify-post.include"
+	config_get_bool wmm globals wmm 1
 	config_get_bool lan_hints globals lan_hints 1
-	[ "$lan_hints" = 1 ] || return 0
 
-	nft insert rule "inet dscpclassify dscp_match iifname { $(mklist "$lan") } ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct"
-	nft insert rule "inet dscpclassify dscp_match iifname { $(mklist "$lan") } ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct"
-}
+	[ "$wmm" = 1 ] && {
+		echo "add rule inet dscpclassify hook_postrouting oifname \$lan ct mark and \$ct_dscp vmap @ct_wmm" >>"/tmp/etc/dscpclassify-post.include"
+	}
+	echo "add rule inet dscpclassify hook_postrouting ct mark and \$ct_dscp vmap @ct_dscp" >>"/tmp/etc/dscpclassify-post.include"
 
-setup_config_rules() {
-	create_lan_hints_rule
+	[ "$lan_hints" = 1 ] && {
+		echo "insert rule inet dscpclassify dscp_match iifname \$lan ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct" >>"/tmp/etc/dscpclassify-post.include"
+		echo "insert rule inet dscpclassify dscp_match iifname \$lan ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct" >>"/tmp/etc/dscpclassify-post.include"
+	}
+
 	config_foreach_reverse create_user_rule rule
 }
 
@@ -220,10 +230,11 @@ start_service() {
 	nft delete table inet dscpclassify 2>/dev/null
 
 	config_load dscpclassify || return 1
-	create_include
+	create_pre_include
+	create_post_include
 	nft -f /etc/dscpclassify.d/dscpclassify.nft || return 1
-	rm -f "/tmp/etc/dscpclassify.include"
-	setup_config_rules
+	rm -f "/tmp/etc/dscpclassify-pre.include"
+	rm -f "/tmp/etc/dscpclassify-post.include"
 
 	logger -t dscpclassify "Service started"
 }
