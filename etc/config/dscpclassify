@@ -1,4 +1,4 @@
-config defaults 'defaults'
+config global 'global'
 	option ht_bytes '1000000'
 	option lan_hints '1'
 
