@@ -62,28 +62,3 @@ config rule
 	option proto 'icmp'
 	option dscp 'cs5'
 	option enabled '0'
-
-config rule
-	option name 'GeForce NOW'
-	option proto 'tcp'
-	option dest_port '49006'
-	option dscp 'af41'
-
-config rule
-	option name 'GeForce NOW'
-	option proto 'udp'
-	option dest_port '49003-49006'
-	option dscp 'af41'
-
-config rule
-	option name 'Stadia'
-	option proto 'tcp'
-	option dest_port '44700-44899'
-	option dscp 'af41'
-
-config rule
-	option name 'Stadia'
-	option proto 'udp'
-	option dest_port '44700-44899'
-	option dscp 'af41'
-
