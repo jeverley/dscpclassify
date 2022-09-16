@@ -25,11 +25,28 @@ iifname() {
 	iifname="iifname { $(mklist "$1") }"
 }
 
+check_proto() {
+	for i in $1; do
+		case $i in
+		"tcp" | "udp") true ;;
+		*) return 1 ;;
+		esac
+	done
+}
+
 dport() {
+	check_proto "$2" || {
+		logger -t dscpclassify "Rules cannot combine a dest_port with protocols other than tcp/udp"
+		return 1
+	}
 	dport="th dport { $(mklist "$1") }"
 }
 
 sport() {
+	check_proto "$2" || {
+		logger -t dscpclassify "Rules cannot combine a src_port with protocols other than tcp/udp"
+		return 1
+	}
 	sport="th sport { $(mklist "$1") }"
 }
 
@@ -55,8 +72,8 @@ daddr() {
 		return 1
 	fi
 
-	[ -n "$ipv4" ] && daddr="ip daddr { $(mklist "$1") }"
-	[ -n "$ipv6" ] && daddr6="ip6 daddr { $(mklist "$1") }"
+	[ -n "$ipv4" ] && daddr="ip daddr { $(mklist "$ipv4") }"
+	[ -n "$ipv6" ] && daddr6="ip6 daddr { $(mklist "$ipv6") }"
 	return 0
 }
 
@@ -82,8 +99,8 @@ saddr() {
 		return 1
 	fi
 
-	[ -n "$ipv4" ] && saddr="ip saddr { $(mklist "$1") }"
-	[ -n "$ipv6" ] && saddr6="ip6 saddr { $(mklist "$1") }"
+	[ -n "$ipv4" ] && saddr="ip saddr { $(mklist "$ipv4") }"
+	[ -n "$ipv6" ] && saddr6="ip6 saddr { $(mklist "$ipv6") }"
 	return 0
 }
 
@@ -112,7 +129,7 @@ comment() {
 	comment="comment \"$*\""
 }
 
-create_rule() {
+create_user_rule() {
 	local enabled family proto direction device dest dest_ip dest_port src_ip src_port class name
 	local nfproto l4proto oifname daddr daddr6 dport iifname saddr saddr6 sport verdict comment
 
@@ -137,11 +154,11 @@ create_rule() {
 	[ -n "$dest" ] && oifname "$(fw4 -q zone "$dest")"
 	[ "$direction" = "out" ] && oifname "$device"
 	[ -n "$dest_ip" ] && { daddr "$dest_ip" "$family" || return 1; }
-	[ -n "$dest_port" ] && dport "$dest_port"
+	[ -n "$dest_port" ] && dport "$dest_port" "$proto"
 	[ -n "$src" ] && iifname "$(fw4 -q zone "$src")"
 	[ "$direction" = "in" ] && iifname "$device"
 	[ -n "$src_ip" ] && { saddr "$src_ip" "$family" || return 1; }
-	[ -n "$src_port" ] && sport "$src_port"
+	[ -n "$src_port" ] && sport "$src_port" "$proto"
 	verdict "$class" || return 1
 	[ -n "$name" ] && comment "$name"
 
@@ -173,11 +190,25 @@ create_include() {
 	local wan=$(fw4 -q zone wan)
 	local ht_bytes
 
-	config_get ht_bytes defaults ht_bytes 1000000
+	config_get ht_bytes globals ht_bytes 1000000
 
-	echo "define lan = { $(mklist "$lan") }" >"/tmp/etc/dscpclassify.nft"
-	echo "define wan = { $(mklist "$wan") }" >>"/tmp/etc/dscpclassify.nft"
-	echo "define ht_bytes = $ht_bytes" >>"/tmp/etc/dscpclassify.nft"
+	echo "define lan = { $(mklist "$lan") }" >"/tmp/etc/dscpclassify.include"
+	echo "define wan = { $(mklist "$wan") }" >>"/tmp/etc/dscpclassify.include"
+	echo "define ht_bytes = $ht_bytes" >>"/tmp/etc/dscpclassify.include"
+}
+
+create_lan_hints_rule() {
+	local lan lan_hints
+	config_get_bool lan_hints globals lan_hints 1
+	[ "$lan_hints" = 1 ] || return 0
+	lan=$(fw4 -q zone lan)
+	nft insert rule inet dscpclassify dscp_match iifname { $(mklist "$lan") } ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct
+	nft insert rule inet dscpclassify dscp_match iifname { $(mklist "$lan") } ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct
+}
+
+setup_config_rules() {
+	create_lan_hints_rule
+	config_foreach_reverse create_user_rule rule
 }
 
 start_service() {
@@ -186,8 +217,8 @@ start_service() {
 	config_load dscpclassify
 	create_include
 	nft -f /etc/dscpclassify.d/dscpclassify.nft
-	config_foreach_reverse create_rule rule
-	rm -f "/tmp/etc/dscpclassify.nft"
+	rm -f "/tmp/etc/dscpclassify.include"
+	setup_config_rules
 
 	logger -t dscpclassify "Service started"
 }
