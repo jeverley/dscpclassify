@@ -1,7 +1,7 @@
 #!/usr/sbin/nft -f
 
-## Include dynamic content
-include "/tmp/etc/dscpclassify.include"
+## Include dynamic pre content
+include "/tmp/etc/dscpclassify-pre.include"
 
 ## Masks for extracting/storing data in the conntrack mark
 define ct_dscp = 0x0000003f
@@ -136,8 +136,8 @@ table inet dscpclassify {
         type filter hook postrouting priority 2; policy accept
         ct mark and $ct_dyn_dscp == 0 ct direction original jump dscp_match
         ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
-        oifname $lan ct mark and $ct_dscp vmap @ct_wmm
-        ct mark and $ct_dscp vmap @ct_dscp
+
+        ## DSCP restore rules are inserted here
     }
 
     chain dscp_match {
@@ -446,3 +446,6 @@ table inet dscpclassify {
         ct mark set ct mark and $ct_unused or $cs7
     }
 }
+
+## Include dynamic post content
+include "/tmp/etc/dscpclassify-post.include"
