@@ -18,7 +18,7 @@ rm -f /etc/dscpclassify.d/dscpclassify.nft
 rm -f /etc/init.d/dscpclassify
 wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/etc/config/dscpclassify -P /etc/config
 wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/etc/dscpclassify.d/dscpclassify.nft -P /etc/dscpclassify.d
-wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/etc/hotplug.d/iface/dscpclassify -P /etc/hotplug.d/iface
+wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/etc/hotplug.d/iface/21-dscpclassify -P /etc/hotplug.d/iface
 wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/etc/init.d/dscpclassify -P /etc/init.d
 chmod +x "/etc/init.d/dscpclassify"
 /etc/init.d/dscpclassify enable
