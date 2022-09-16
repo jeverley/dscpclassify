@@ -195,7 +195,7 @@ table inet dscpclassify {
     ## Mark high-throughput threaded connections to a service as AF11
     chain threaded_service {
         ct bytes < $ht_bytes return
-        ct mark set ct mark and $ct_unused_dyn or $af11
+        ct mark set ct mark and $ct_unused_dyn or $af13
         update @threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 60s } return
         update @threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 60s }
     }
@@ -203,7 +203,7 @@ table inet dscpclassify {
     ## Mark high-throughput threaded connections to a service as AF11
     chain threaded_service_response {
         ct bytes < $ht_bytes return
-        ct mark set ct mark and $ct_unused_dyn or $af11
+        ct mark set ct mark and $ct_unused_dyn or $af13
         update @threaded_services { meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th sport timeout 60s } return
         update @threaded_services6 { meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport timeout 60s }
     }
