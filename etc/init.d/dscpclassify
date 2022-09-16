@@ -7,106 +7,150 @@ mklist() {
 	echo "$*" | tr '\n' ' ' | sed -e 's/^\s*//' -e 's/\s*$//' -e 's/\s\+/, /g'
 }
 
-proto() {
-	echo "meta l4proto { $(mklist "$@") }"
+l4proto() {
+	l4proto="meta l4proto { $(mklist "$1") }"
 }
 
-iifname() {
-	echo "iifname { $(mklist "$@") }"
+nfproto() {
+	nfproto="meta nfproto { $(mklist "$1") }"
 }
 
 oifname() {
-	echo "oifname { $(mklist "$@") }"
+	[ -n "$1" ] || return 1
+	oifname="oifname { $(mklist "$1") }"
 }
 
-src() {
-	local devices="$(fw4 -q zone "$1")"
-	echo "$(iifname "$devices"))"
-}
-
-dest() {
-	local devices="$(fw4 -q zone "$1")"
-	echo "$(oifname "$devices"))"
+iifname() {
+	[ -n "$1" ] || return 1
+	iifname="iifname { $(mklist "$1") }"
 }
 
 dport() {
-	echo "th dport { $(mklist "$@") }"
-}
-
-daddr() {
-	echo "ip daddr { $(mklist "$@") }"
+	dport="th dport { $(mklist "$1") }"
 }
 
 sport() {
-	echo "th sport { $(mklist "$@") }"
+	sport="th sport { $(mklist "$1") }"
+}
+
+daddr() {
+	local ipv4 ipv6
+	for i in $1; do
+		case $i in
+		[0-9]*.[0-9]*.[0-9]*.[0-9]*) ipv4="$ipv4 $i" ;;
+		*:*) ipv6="$ipv6 $i" ;;
+		*)
+			logger -t dscpclassify "Rule contains an invalid dest_ip"
+			return 1
+			;;
+		esac
+	done
+
+	if [ -n "$ipv4" ] && [ "$2" = "ipv6" ]; then
+		logger -t dscpclassify "Rules cannot combine an ipv4 dest_ip with the ipv6 family"
+		return 1
+	fi
+	if [ -n "$ipv6" ] && [ "$2" = "ipv4" ]; then
+		logger -t dscpclassify "Rules cannot combine an ipv6 dest_ip with the ipv4 family"
+		return 1
+	fi
+
+	[ -n "$ipv4" ] && daddr="ip daddr { $(mklist "$1") }"
+	[ -n "$ipv6" ] && daddr6="ip6 daddr { $(mklist "$1") }"
+	return 0
 }
 
 saddr() {
-	echo "ip saddr { $(mklist "$@") }"
+	local ipv4 ipv6
+	for i in $1; do
+		case $i in
+		[0-9]*.[0-9]*.[0-9]*.[0-9]*) ipv4="$ipv4 $i" ;;
+		*:*) ipv6="$ipv6 $i" ;;
+		*)
+			logger -t dscpclassify "Rule contains an invalid src_ip"
+			return 1
+			;;
+		esac
+	done
+
+	if [ -n "$ipv4" ] && [ "$2" = "ipv6" ]; then
+		logger -t dscpclassify "Rules cannot combine an ipv4 src_ip with the ipv6 family"
+		return 1
+	fi
+	if [ -n "$ipv6" ] && [ "$2" = "ipv4" ]; then
+		logger -t dscpclassify "Rules cannot combine an ipv6 src_ip with the ipv4 family"
+		return 1
+	fi
+
+	[ -n "$ipv4" ] && saddr="ip saddr { $(mklist "$1") }"
+	[ -n "$ipv6" ] && saddr6="ip6 saddr { $(mklist "$1") }"
+	return 0
 }
 
-dscp() {
-	local class="$(echo "$1" | tr 'A-Z' 'a-z')"
+verdict() {
+	local class
+	[ -n "$1" ] || {
+		logger -t dscpclassify "Rule missing a dscp class"
+		return 1
+	}
+
+	class="$(echo "$1" | tr 'A-Z' 'a-z')"
+	[ "$class" = "be" ] && class="cs0"
 
 	case "$class" in
 	"cs0" | "cs1" | "af11" | "af12" | "af13" | "cs2" | "af21" | "af22" | "af23" | "cs3" | "af31" | "af32" | "af33" | "cs4" | "af41" | "af42" | "af43" | "cs5" | "va" | "ef" | "cs6" | "cs7")
-		echo "goto ct_set_$class"
+		verdict="goto ct_set_$class"
 		return 0
 		;;
 	esac
 
-	logger -t dscpclassify "Invalid dscp option value in '/etc/config/dscpclassify'"
-	rule=""
+	logger -t dscpclassify "Rule contains an invalid dscp class"
 	return 1
 }
 
 comment() {
-	echo "comment \"$*\""
-}
-
-create_include() {
-	local lan=$(fw4 -q zone lan)
-	local wan=$(fw4 -q zone wan)
-	local ht_bytes
-
-	config_get ht_bytes defaults ht_bytes 1000000
-
-	echo "define lan = { $(mklist "$lan") }" >"/tmp/etc/dscpclassify.nft"
-	echo "define wan = { $(mklist "$wan") }" >>"/tmp/etc/dscpclassify.nft"
-	echo "define ht_bytes = $ht_bytes" >>"/tmp/etc/dscpclassify.nft"
+	comment="comment \"$*\""
 }
 
 create_rule() {
-	local rule enabled proto src dest daddr dport saddr sport dscp comment
+	local enabled family proto direction device dest dest_ip dest_port src_ip src_port class name
+	local nfproto l4proto oifname daddr daddr6 dport iifname saddr saddr6 sport verdict comment
 
 	config_get_bool enabled "$1" enabled
-	[ "$enabled" = 0 ] && return 0
+	[ "$enabled" = 0 ] && return
 
+	config_get family "$1" family
 	config_get proto "$1" proto
-	config_get src "$1" src
 	config_get dest "$1" dest
-	config_get daddr "$1" dest_ip
-	config_get dport "$1" dest_port
-	config_get saddr "$1" src_ip
-	config_get sport "$1" src_port
-	config_get dscp "$1" dscp
-	config_get comment "$1" name
+	config_get dest_ip "$1" dest_ip
+	config_get dest_port "$1" dest_port
+	config_get src "$1" src
+	config_get src_ip "$1" src_ip
+	config_get src_port "$1" src_port
+	config_get direction "$1" direction
+	config_get device "$1" device
+	config_get class "$1" class
+	config_get name "$1" name
 
-	[ -n "$proto" ] && rule="$rule $(proto $proto)"
-	[ -n "$src" ] && rule="$rule $(src $src)"
-	[ -n "$dest" ] && rule="$rule $(dest $dest)"
-	[ -n "$daddr" ] && rule="$rule $(daddr $daddr)"
-	[ -n "$dport" ] && rule="$rule $(dport $dport)"
-	[ -n "$saddr" ] && rule="$rule $(saddr $saddr)"
-	[ -n "$sport" ] && rule="$rule $(sport $sport)"
-	[ -n "$dscp" ] && rule="$rule $(dscp $dscp)"
-	[ -n "$rule" ] || {
-		logger -t dscpclassify "Invalid rule in '/etc/config/dscpclassify'"
-		return 1
+	[ -n "$family" ] && nfproto "$family"
+	[ -n "$proto" ] && l4proto "$proto"
+	[ -n "$dest" ] && oifname "$(fw4 -q zone "$dest")"
+	[ "$direction" = "out" ] && oifname "$device"
+	[ -n "$dest_ip" ] && { daddr "$dest_ip" "$family" || return 1; }
+	[ -n "$dest_port" ] && dport "$dest_port"
+	[ -n "$src" ] && iifname "$(fw4 -q zone "$src")"
+	[ "$direction" = "in" ] && iifname "$device"
+	[ -n "$src_ip" ] && { saddr "$src_ip" "$family" || return 1; }
+	[ -n "$src_port" ] && sport "$src_port"
+	verdict "$class" || return 1
+	[ -n "$name" ] && comment "$name"
+
+	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
+		nft insert rule inet dscpclassify dscp_match "$nfproto" "$l4proto" "$oifname" "$dport" "$iifname" "$sport" "$verdict" "$comment"
+		return
 	}
-	[ -n "$comment" ] && rule="$rule $(comment $comment)"
-
-	nft insert rule inet dscpclassify dscp_match "$rule"
+	[ -n "$daddr$saddr" ] && nft insert rule inet dscpclassify dscp_match "$nfproto" "$l4proto" "$oifname" "$daddr" "$dport" "$iifname" "$saddr" "$sport" "$verdict" "$comment"
+	[ -n "$daddr6$saddr6" ] && nft insert rule inet dscpclassify dscp_match "$nfproto" "$l4proto" "$oifname" "$daddr6" "$dport" "$iifname" "$saddr6" "$sport" "$verdict" "$comment"
 }
 
 list_append() {
@@ -122,6 +166,18 @@ config_foreach_reverse() {
 	for config in $list; do
 		"$1" "$config" "$3"
 	done
+}
+
+create_include() {
+	local lan=$(fw4 -q zone lan)
+	local wan=$(fw4 -q zone wan)
+	local ht_bytes
+
+	config_get ht_bytes defaults ht_bytes 1000000
+
+	echo "define lan = { $(mklist "$lan") }" >"/tmp/etc/dscpclassify.nft"
+	echo "define wan = { $(mklist "$wan") }" >>"/tmp/etc/dscpclassify.nft"
+	echo "define ht_bytes = $ht_bytes" >>"/tmp/etc/dscpclassify.nft"
 }
 
 start_service() {
