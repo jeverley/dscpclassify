@@ -53,7 +53,7 @@ The OpenWrt firewall syntax is outlined here https://openwrt.org/docs/guide-user
 
 A working default configuration is provided with the service.
 
-**The service supports the following dynamic classification options:**
+**The service supports the following global classification options:**
 
 |  Config option | Description  | Type  | Default  |
 |---|---|---|---|
