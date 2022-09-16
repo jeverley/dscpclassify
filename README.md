@@ -59,6 +59,7 @@ A working default configuration is provided with the service.
 |---|---|---|---|
 | lan_hints | Adopt the DSCP class set by a LAN client (this exludes CS6 and CS7 classes to avoid abuse)  | boolean  |  1 |
 | ht_bytes  | The total bytes before a threaded service's connection is classed as high-throughput (af13)  | int  |  1000000 |
+| wmm  | When enabled the service will mark LAN bound packets with DSCP values respective of WMM (RFC-8325)  | boolean  |  1 |
 
 <br />
 <br />
