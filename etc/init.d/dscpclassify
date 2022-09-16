@@ -169,11 +169,11 @@ create_user_rule() {
 	[ -n "$name" ] && comment "$name"
 
 	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
-		nft insert rule inet dscpclassify dscp_match "$nfproto" "$l4proto" "$oifname" "$dport" "$iifname" "$sport" "$verdict" "$comment"
+		nft insert rule "inet dscpclassify dscp_match $nfproto $l4proto $oifname $dport $iifname $sport $verdict $comment"
 		return
 	}
-	[ -n "$daddr$saddr" ] && nft insert rule inet dscpclassify dscp_match "$nfproto" "$l4proto" "$oifname" "$daddr" "$dport" "$iifname" "$saddr" "$sport" "$verdict" "$comment"
-	[ -n "$daddr6$saddr6" ] && nft insert rule inet dscpclassify dscp_match "$nfproto" "$l4proto" "$oifname" "$daddr6" "$dport" "$iifname" "$saddr6" "$sport" "$verdict" "$comment"
+	[ -n "$daddr$saddr" ] && nft insert rule "inet dscpclassify dscp_match $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport $verdict $comment"
+	[ -n "$daddr6$saddr6" ] && nft insert rule "inet dscpclassify dscp_match $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport $verdict $comment"
 }
 
 list_append() {
@@ -202,11 +202,13 @@ create_include() {
 }
 
 create_lan_hints_rule() {
-	local lan lan_hints
+	local lan_hints
+
 	config_get_bool lan_hints globals lan_hints 1
 	[ "$lan_hints" = 1 ] || return 0
-	nft insert rule inet dscpclassify dscp_match iifname { $(mklist "$lan") } ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct
-	nft insert rule inet dscpclassify dscp_match iifname { $(mklist "$lan") } ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct
+
+	nft insert rule "inet dscpclassify dscp_match iifname { $(mklist "$lan") } ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct"
+	nft insert rule "inet dscpclassify dscp_match iifname { $(mklist "$lan") } ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct"
 }
 
 setup_config_rules() {
