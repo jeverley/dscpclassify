@@ -1,42 +1,42 @@
 #!/usr/sbin/nft -f
 
-## Include dynamic rules and definitions
-include "/tmp/etc/dscpclassify.nft"
+## Include dynamic content
+include "/tmp/etc/dscpclassify.include"
+
+## Masks for extracting/storing data in the conntrack mark
+define ct_dscp = 0x0000003f
+define ct_dyn = 0x00000080
+define ct_dyn_dscp = 0x000000ff
+define ct_ht = 0x00000040
+define ct_unused = 0xffffff00
+define ct_unused_dyn = 0xffffff80
+define ct_unused_dyn_dscp = 0xffffffbf
+
+## DSCP classification values
+define cs0 = 0
+define cs1 = 8
+define af11 = 10
+define af12 = 12
+define af13 = 14
+define cs2 = 16
+define af21 = 18
+define af22 = 20
+define af23 = 22
+define cs3 = 24
+define af31 = 26
+define af32 = 28
+define af33 = 30
+define cs4 = 32
+define af41 = 34
+define af42 = 36
+define af43 = 38
+define cs5 = 40
+define va = 44
+define ef = 46
+define cs6 = 48
+define cs7 = 56
 
 table inet dscpclassify {
-    ## Masks for extracting/storing data in the conntrack mark
-    define ct_dscp = 0x0000003f
-    define ct_dyn = 0x00000080
-    define ct_dyn_dscp = 0x000000ff
-    define ct_ht = 0x00000040
-    define ct_unused = 0xffffff00
-    define ct_unused_dyn = 0xffffff80
-    define ct_unused_dyn_dscp = 0xffffffbf
-
-    ## DSCP classification values
-    define cs0 = 0
-    define cs1 = 8
-    define af11 = 10
-    define af12 = 12
-    define af13 = 14
-    define cs2 = 16
-    define af21 = 18
-    define af22 = 20
-    define af23 = 22
-    define cs3 = 24
-    define af31 = 26
-    define af32 = 28
-    define af33 = 30
-    define cs4 = 32
-    define af41 = 34
-    define af42 = 36
-    define af43 = 38
-    define cs5 = 40
-    define va = 44
-    define ef = 46
-    define cs6 = 48
-    define cs7 = 56
-
     ## Conntrack mark to DSCP class vmap
     map ct_dscp {
         type mark : verdict
@@ -142,10 +142,6 @@ table inet dscpclassify {
 
     chain dscp_match {
         ## User defined rules in '/etc/config/dscpclassify' are inserted here
-
-        ## Store any LAN client's specified DSCP (excluding CS6/7) in the conntrack mark (comment out if undesired)
-        iifname $lan ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct
-        iifname $lan ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct
 
         ## Unclassified packets get dynamic conntrack mark
         ct mark set ct mark and $ct_unused or $ct_dyn
