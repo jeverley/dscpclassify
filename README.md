@@ -57,8 +57,8 @@ A working default configuration is provided with the service.
 
 |  Config option | Description  | Type  | Default  |
 |---|---|---|---|
-| lan_hints | Adopt the DSCP class set by a LAN client  | boolean  |  1 |
-| ht_bytes  | The total bytes before a threaded service's connection is classed as High-Throughput (af13)  | int  |  1000000 |
+| lan_hints | Adopt the DSCP class set by a LAN client (this exludes CS6 and CS7 classes to avoid abuse)  | boolean  |  1 |
+| ht_bytes  | The total bytes before a threaded service's connection is classed as high-throughput (af13)  | int  |  1000000 |
 
 <br />
 <br />
