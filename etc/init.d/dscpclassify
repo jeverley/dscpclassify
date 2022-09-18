@@ -180,7 +180,7 @@ verdict() {
 	[ "$class" = "be" ] && class="cs0"
 
 	case "$class" in
-	"cs0" | "cs1" | "af11" | "af12" | "af13" | "cs2" | "af21" | "af22" | "af23" | "cs3" | "af31" | "af32" | "af33" | "cs4" | "af41" | "af42" | "af43" | "cs5" | "va" | "ef" | "cs6" | "cs7")
+	"cs0" | "le" | "cs1" | "af11" | "af12" | "af13" | "cs2" | "af21" | "af22" | "af23" | "cs3" | "af31" | "af32" | "af33" | "cs4" | "af41" | "af42" | "af43" | "cs5" | "va" | "ef" | "cs6" | "cs7")
 		verdict="goto ct_set_$class"
 		return 0
 		;;

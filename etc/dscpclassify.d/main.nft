@@ -13,6 +13,7 @@ define ct_unused_dyn = 0xffffff80
 
 ## DSCP classification values
 define cs0 = 0
+define lephb = 1
 define cs1 = 8
 define af11 = 10
 define af12 = 12
@@ -41,6 +42,7 @@ table inet dscpclassify {
         type mark : verdict
         elements = {
             $cs0 : goto dscp_set_cs0,
+            $lephb : goto dscp_set_le,
             $cs1 : goto dscp_set_cs1,
             $af11 : goto dscp_set_af11,
             $af12 : goto dscp_set_af12,
@@ -70,6 +72,7 @@ table inet dscpclassify {
         type mark : verdict
         elements = {
             $cs0 : goto dscp_set_cs0,   # WMM BE
+            $lephb : goto dscp_set_le,  # WMM BK
             $cs1 : goto dscp_set_cs1,   # WMM BK
             $af11 : goto dscp_set_cs0,  # WMM BE
             $af12 : goto dscp_set_cs0,  # WMM BE
@@ -99,6 +102,7 @@ table inet dscpclassify {
         type dscp : verdict
         elements = {
             cs0 : goto ct_set_cs0,
+            lephb : goto ct_set_le,
             cs1 : goto ct_set_cs1,
             af11 : goto ct_set_af11,
             af12 : goto ct_set_af12,
@@ -261,6 +265,11 @@ table inet dscpclassify {
         ip6 dscp set cs0
     }
 
+    chain dscp_set_le {
+        ip dscp set lephb
+        ip6 dscp set lephb
+    }
+
     chain dscp_set_cs1 {
         ip dscp set cs1
         ip6 dscp set cs1
@@ -369,6 +378,10 @@ table inet dscpclassify {
     ## Set conntrack DSCP mark without modifying unused bits
     chain ct_set_cs0 {
         ct mark set ct mark and $ct_unused or $cs0
+    }
+
+    chain ct_set_le {
+        ct mark set ct mark and $ct_unused or $lephb
     }
 
     chain ct_set_cs1 {
