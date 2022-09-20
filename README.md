@@ -4,6 +4,32 @@ An nftables based service for applying DSCP classifications to connections, comp
 This should be used in conjunction with layer-cake SQM queue with ctinfo configured to restore DSCP on the device ingress.
 The nft-dscpclassify rules use the last 8 bits of the conntrack mark (0x000000ff).
 
+## Classification modes
+The service supports three modes for classifying and DSCP marking connections.
+
+### User rules
+The service will first attempt to classify new connections using rules specified by the user in the config file.<br />
+These follow a similar syntax to the OpenWrt firewall config and can match upon source/destination ports and IPs, firewall zones etc.
+
+### LAN client DSCP hinting
+The service can be configured to apply the DSCP mark applied by a LAN client.<br />
+This function ignores CS6 and CS7 classes to avoid abuse from inappropriately configed LAN devices such as IoT.
+
+### Dynamic classification
+Connections that do not match a pre-specified rule will be dynamically classified by the service via three mechanisms:
+
+* Multi-threaded client port detection for detecting P2P traffic
+  * These connections are classified as Bulk (CS1) and prioritised below Best Effort traffic when using the layer-cake qdisc.
+* Multi-connection service detection for identifying high-throughput downloads from services such as Steam/Windows Update
+  * These connections are classified as High-Throughput (AF13) and have a higher drop probability than regular traffic in the Best Effort layer-cake tin.
+* Increased priority for low throughput small packet UDP streams such as VoIP/game traffic.
+  * These connections are classified as Real-Time (CS4) and are processed by layer-cake in the Voice tin.#
+  
+### External classification
+The service will respect DSCP classification stored by an external service in a connection's conntrack bits, this could include services such as netifyd.
+
+<br />
+
 ![image](https://user-images.githubusercontent.com/46714706/188151111-9167e54d-482e-4584-b43b-0759e0ad7561.png)
 
 <br />
