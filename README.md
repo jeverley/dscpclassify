@@ -28,11 +28,8 @@ Connections that do not match a pre-specified rule will be dynamically classifie
 ### External classification
 The service will respect DSCP classification stored by an external service in a connection's conntrack bits, this could include services such as netifyd.
 
-<br />
-
+## Service architecture
 ![image](https://user-images.githubusercontent.com/46714706/188151111-9167e54d-482e-4584-b43b-0759e0ad7561.png)
-
-<br />
 
 ## Service installation
 To install the dscpclassify service via command line you can use the following:
