@@ -137,11 +137,11 @@ table inet dscpclassify {
         ct mark and $ct_dyn_dscp == 0 ct direction original jump dscp_match
         ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
 
-        ## DSCP restore rules are inserted here
+        ## DSCP restore rules are inserted here by init script
     }
 
     chain dscp_match {
-        ## User defined rules in '/etc/config/dscpclassify' are inserted here
+        ## User defined rules in '/etc/config/dscpclassify' are inserted here by init script
 
         ## Unclassified packets get dynamic conntrack mark
         ct mark set ct mark and $ct_unused or $ct_dyn
@@ -190,7 +190,7 @@ table inet dscpclassify {
 
     ## Mark high-throughput threaded connections to a service as AF11
     chain threaded_service {
-        ct bytes < $ht_bytes return
+        ct bytes < $threaded_service_bytes return
         ct mark set ct mark and $ct_unused_dyn or $af13
         update @threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 60s } return
         update @threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 60s }
@@ -198,7 +198,7 @@ table inet dscpclassify {
 
     ## Mark high-throughput threaded connections to a service as AF11
     chain threaded_service_response {
-        ct bytes < $ht_bytes return
+        ct bytes < $threaded_service_bytes return
         ct mark set ct mark and $ct_unused_dyn or $af13
         update @threaded_services { meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th sport timeout 60s } return
         update @threaded_services6 { meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport timeout 60s }
@@ -206,14 +206,12 @@ table inet dscpclassify {
 
     ## Mark threaded bulk clients as CS1
     chain threaded_client {
-        meter bcsport { meta l4proto . ip saddr . th sport limit rate over 10 kbytes/second } update @threaded_clients { meta l4proto . ip saddr . th sport timeout 300s } ct mark set ct mark and $ct_unused_dyn or $cs1 return
-        meter bcsport6 { meta l4proto . ip6 saddr . th sport limit rate over 10 kbytes/second } update @threaded_clients6 { meta l4proto . ip6 saddr . th sport timeout 300s } ct mark set ct mark and $ct_unused_dyn or $cs1
+        ## Threaded client meter rules are added here by init script
     }
 
     ## Mark threaded bulk clients as CS1
     chain threaded_client_response {
-        meter bcdport { meta l4proto . ip daddr . th dport limit rate over 10 kbytes/second } update @threaded_clients { meta l4proto . ip daddr . th dport timeout 300s } ct mark set ct mark and $ct_unused_dyn or $cs1 return
-        meter bcdport6 { meta l4proto . ip6 saddr . th sport limit rate over 10 kbytes/second } update @threaded_clients6 { meta l4proto . ip6 daddr . th dport timeout 300s } ct mark set ct mark and $ct_unused_dyn or $cs1
+        ## Threaded client meter rules are added here by init script
     }
 
     chain dscp_detect_threading {
