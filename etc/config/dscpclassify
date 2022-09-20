@@ -1,6 +1,7 @@
 config global 'global'
-	option ht_bytes '1000000'
 	option lan_hints '1'
+	option threaded_client_kbps '10'
+	option threaded_service_bytes '1000000'
 	option wmm '1'
 
 config rule
@@ -31,9 +32,9 @@ config rule
 	option class 'cs2'
 
 config rule
-	option name 'Xbox Cloud Gaming (UK servers)'
+	option name 'Xbox Cloud Gaming'
 	option proto 'udp'
-	option dest_ip '13.104.0.0/14'
+	list dest_ip '13.104.0.0/14' # Western Europe
 	option dest_port '1000-1150'
 	option class 'af41'
 
