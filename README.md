@@ -13,7 +13,7 @@ These follow a similar syntax to the OpenWrt firewall config and can match upon 
 
 ### LAN client DSCP hinting
 The service can be configured to apply the DSCP mark applied by a LAN client.<br />
-This function ignores CS6 and CS7 classes to avoid abuse from inappropriately configed LAN devices such as IoT.
+This function ignores CS6 and CS7 classes to avoid abuse from inappropriately configed LAN clients such as IoT devices.
 
 ### Dynamic classification
 Connections that do not match a pre-specified rule will be dynamically classified by the service via three mechanisms:
