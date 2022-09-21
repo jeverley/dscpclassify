@@ -6,9 +6,6 @@ USE_PROCD=1
 lan="$(fw4 -q zone lan)"
 wan="$(fw4 -q zone wan)"
 
-[ -n "$lan" ] || exit 0
-[ -n "$wan" ] || exit 0
-
 mklist() {
 	echo "$*" | tr '\n' ' ' | sed -e 's/^\s*//' -e 's/\s*$//' -e 's/\s\+/, /g'
 }
@@ -233,6 +230,9 @@ create_post_include() {
 
 start_service() {
 	nft delete table inet dscpclassify 2>/dev/null
+
+	[ -n "$lan" ] || exit 0
+	[ -n "$wan" ] || exit 0
 
 	config_load dscpclassify || return 1
 	create_pre_include
