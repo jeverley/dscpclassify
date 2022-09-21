@@ -9,8 +9,19 @@ The service supports three modes for classifying and DSCP marking connections.
 
 ### User rules
 The service will first attempt to classify new connections using rules specified by the user in the config file.<br />
-These follow a similar syntax to the OpenWrt firewall config and can match upon source/destination ports and IPs, firewall zones etc.
+These follow a similar syntax to the OpenWrt firewall config and can match upon source/destination ports and IPs, firewall zones etc.<br />
+Below is an example:
 
+```
+config rule
+	option name 'DNS'
+	list proto 'tcp'
+	list proto 'udp'
+	list dest_port '53'
+	list dest_port '853'
+	list dest_port '5353'
+	option class 'cs5'
+```
 ### LAN client DSCP hinting
 The service can be configured to apply the DSCP mark applied by a LAN client.<br />
 This function ignores CS6 and CS7 classes to avoid abuse from inappropriately configed LAN clients such as IoT devices.
