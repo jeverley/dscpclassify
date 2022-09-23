@@ -130,6 +130,8 @@ table inet dscpclassify {
     ## Classify connections to the router
     chain input {
         type filter hook input priority 2; policy accept
+	meta iifname "lo" return
+	meta oifname "lo" return
         ct mark and $ct_dyn_dscp == 0 ct direction original jump static_classify
         ct mark and $ct_dyn == $ct_dyn jump dynamic_classify
     }
@@ -137,6 +139,8 @@ table inet dscpclassify {
     ## Classify and DSCP mark connections from/forwarded via the router
     chain postrouting {
         type filter hook postrouting priority 2; policy accept
+	meta iifname "lo" return
+	meta oifname "lo" return
         ct mark and $ct_dyn_dscp == 0 ct direction original jump static_classify
         ct mark and $ct_dyn == $ct_dyn jump dynamic_classify
 
