@@ -137,7 +137,7 @@ table inet dscpclassify {
         ct mark and $ct_dyn_dscp == 0 ct direction original jump dscp_match
         ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
 
-        ## DSCP restore rules are inserted here by init script
+        ## DSCP restore rules are added here by init script
     }
 
     chain dscp_match {
@@ -152,7 +152,7 @@ table inet dscpclassify {
         meta l4proto != { tcp, udp } return
 
         ## Detect connection threading by counting new connections
-        ct packets < 2 goto dscp_detect_threading
+        ct packets 1 goto dscp_detect_threading
 
         ## Assess threaded service connections for downgrade to High-Throughput class (AF11)
         meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport @threaded_services goto threaded_service
@@ -192,7 +192,7 @@ table inet dscpclassify {
     chain threaded_service {
         ct bytes < $threaded_service_bytes return
         ct mark set ct mark and $ct_unused_dyn or $af13
-        update @threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 60s } return
+        update @threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 60s }
         update @threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 60s }
     }
 
@@ -200,7 +200,7 @@ table inet dscpclassify {
     chain threaded_service_response {
         ct bytes < $threaded_service_bytes return
         ct mark set ct mark and $ct_unused_dyn or $af13
-        update @threaded_services { meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th sport timeout 60s } return
+        update @threaded_services { meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th sport timeout 60s }
         update @threaded_services6 { meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport timeout 60s }
     }
 
@@ -246,112 +246,112 @@ table inet dscpclassify {
 
     ## IP version agnostic DSCP set chains
     chain dscp_set_cs0 {
-        ip dscp set cs0 return
+        ip dscp set cs0
         ip6 dscp set cs0
     }
 
     chain dscp_set_cs1 {
-        ip dscp set cs1 return
+        ip dscp set cs1
         ip6 dscp set cs1
     }
 
     chain dscp_set_af11 {
-        ip dscp set af11 return
+        ip dscp set af11
         ip6 dscp set af11
     }
 
     chain dscp_set_af12 {
-        ip dscp set af12 return
+        ip dscp set af12
         ip6 dscp set af12
     }
 
     chain dscp_set_af13 {
-        ip dscp set af13 return
+        ip dscp set af13
         ip6 dscp set af13
     }
 
     chain dscp_set_cs2 {
-        ip dscp set cs2 return
+        ip dscp set cs2
         ip6 dscp set cs2
     }
 
     chain dscp_set_af21 {
-        ip dscp set af21 return
+        ip dscp set af21
         ip6 dscp set af21
     }
 
     chain dscp_set_af22 {
-        ip dscp set af22 return
+        ip dscp set af22
         ip6 dscp set af22
     }
 
     chain dscp_set_af23 {
-        ip dscp set af23 return
+        ip dscp set af23
         ip6 dscp set af23
     }
 
     chain dscp_set_cs3 {
-        ip dscp set cs3 return
+        ip dscp set cs3
         ip6 dscp set cs3
     }
 
     chain dscp_set_af31 {
-        ip dscp set af31 return
+        ip dscp set af31
         ip6 dscp set af31
     }
 
     chain dscp_set_af32 {
-        ip dscp set af32 return
+        ip dscp set af32
         ip6 dscp set af32
     }
 
     chain dscp_set_af33 {
-        ip dscp set af33 return
+        ip dscp set af33
         ip6 dscp set af33
     }
 
     chain dscp_set_cs4 {
-        ip dscp set cs4 return
+        ip dscp set cs4
         ip6 dscp set cs4
     }
 
     chain dscp_set_af41 {
-        ip dscp set af41 return
+        ip dscp set af41
         ip6 dscp set af41
     }
 
     chain dscp_set_af42 {
-        ip dscp set af42 return
+        ip dscp set af42
         ip6 dscp set af42
     }
 
     chain dscp_set_af43 {
-        ip dscp set af43 return
+        ip dscp set af43
         ip6 dscp set af43
     }
 
     chain dscp_set_cs5 {
-        ip dscp set cs5 return
+        ip dscp set cs5
         ip6 dscp set cs5
     }
 
     chain dscp_set_va {
-        ip dscp set 44 return
+        ip dscp set 44
         ip6 dscp set 44
     }
 
     chain dscp_set_ef {
-        ip dscp set ef return
+        ip dscp set ef
         ip6 dscp set ef
     }
 
     chain dscp_set_cs6 {
-        ip dscp set cs6 return
+        ip dscp set cs6
         ip6 dscp set cs6
     }
 
     chain dscp_set_cs7 {
-        ip dscp set cs7 return
+        ip dscp set cs7
         ip6 dscp set cs7
     }
 
