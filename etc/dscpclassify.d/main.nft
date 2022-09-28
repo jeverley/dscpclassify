@@ -212,7 +212,7 @@ table inet dscpclassify {
         ## Classify high-throughput connections exceeding 200pps as Best Effort (CS0)
         update @high_throughput { meta l4proto . ip saddr . th sport . ip daddr . th dport timeout 5s limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $cs0 return
         update @high_throughput6 { meta l4proto . ip6 saddr . th sport . ip6 daddr . th dport timeout 5s limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $cs0 return
-        
+
         ## Return high-throughput connection responses
         meta l4proto . ip daddr . th dport . ip saddr . th sport @high_throughput return
         meta l4proto . ip6 daddr . th dport . ip6 saddr . th sport @high_throughput6 return
@@ -224,6 +224,7 @@ table inet dscpclassify {
         ct mark set ct mark and $ct_unused_dyn or $cs0
     }
 
+    ## Sets for stateful tracking
     set threaded_services {
         type inet_proto . ipv4_addr . ipv4_addr . inet_service
         flags timeout
