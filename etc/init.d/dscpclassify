@@ -11,20 +11,22 @@ mklist() {
 }
 
 l4proto() {
+	[ -n "$1" ] || return 0
 	l4proto="meta l4proto { $(mklist "$1") }"
 }
 
 nfproto() {
+	[ -n "$1" ] || return 0
 	nfproto="meta nfproto { $(mklist "$1") }"
 }
 
 oifname() {
-	[ -n "$1" ] || return 1
+	[ -n "$1" ] || return 0
 	oifname="oifname { $(mklist "$1") }"
 }
 
 iifname() {
-	[ -n "$1" ] || return 1
+	[ -n "$1" ] || return 0
 	iifname="iifname { $(mklist "$1") }"
 }
 
@@ -38,16 +40,18 @@ check_proto() {
 }
 
 dport() {
+	[ -n "$1" ] || return 0
 	check_proto "$2" || {
-		logger -t dscpclassify "Rules cannot combine a dest_port with protocols other than tcp/udp"
+		logger -t dscpclassify "Rules cannot combine a dest_port with protocols other than 'tcp' or 'udp'"
 		return 1
 	}
 	dport="th dport { $(mklist "$1") }"
 }
 
 sport() {
+	[ -n "$1" ] || return 0
 	check_proto "$2" || {
-		logger -t dscpclassify "Rules cannot combine a src_port with protocols other than tcp/udp"
+		logger -t dscpclassify "Rules cannot combine a src_port with protocols other than 'tcp' or 'udp'"
 		return 1
 	}
 	sport="th sport { $(mklist "$1") }"
@@ -65,7 +69,9 @@ check_ip() {
 
 daddr() {
 	local ipv4 ipv6
-	
+
+	[ -n "$1" ] || return 0
+
 	check_ip "$1" || {
 		logger -t dscpclassify "Rule contains an invalid dest_ip"
 		return 1
@@ -87,6 +93,8 @@ daddr() {
 saddr() {
 	local ipv4 ipv6
 
+	[ -n "$1" ] || return 0
+
 	check_ip "$1" || {
 		logger -t dscpclassify "Rule contains an invalid src_ip"
 		return 1
@@ -107,6 +115,7 @@ saddr() {
 
 verdict() {
 	local class
+
 	[ -n "$1" ] || {
 		logger -t dscpclassify "Rule missing a dscp class"
 		return 1
@@ -127,7 +136,47 @@ verdict() {
 }
 
 comment() {
+	[ -n "$1" ] || return 0
 	comment="comment \"$*\""
+}
+
+iifzone() {
+	local device
+
+	[ -n "$1" ] || return 0
+	device="$(fw4 -q zone "$1")" || return 1
+	iifname "$device"
+}
+
+oifzone() {
+	local device
+
+	[ -n "$1" ] || return 0
+	device="$(fw4 -q zone "$1")" || return 1
+	oifname "$device"
+}
+
+device() {
+	[ -n "$1$2" ] || return 0
+	if [ -n "$1" ] && [ -n "$2" ]; then
+		case $2 in
+		"in")
+			iifname "$1"
+			return 0
+			;;
+		"out")
+			oifname "$1"
+			return 0
+			;;
+		*)
+			logger -t dscpclassify "The direction rule option must be either 'in' or 'out'"
+			return 1
+			;;
+		esac
+	else
+		logger -t dscpclassify "Rules must use the device and direction options in conjunction"
+		return 1
+	fi
 }
 
 create_user_rule() {
@@ -135,7 +184,7 @@ create_user_rule() {
 	local nfproto l4proto oifname daddr daddr6 dport iifname saddr saddr6 sport verdict comment
 
 	config_get_bool enabled "$1" enabled
-	[ "$enabled" = 0 ] && return
+	[ "$enabled" = 0 ] && return 0
 
 	config_get family "$1" family
 	config_get proto "$1" proto
@@ -145,27 +194,26 @@ create_user_rule() {
 	config_get src "$1" src
 	config_get src_ip "$1" src_ip
 	config_get src_port "$1" src_port
-	config_get direction "$1" direction
 	config_get device "$1" device
+	config_get direction "$1" direction
 	config_get class "$1" class
 	config_get name "$1" name
 
-	[ -n "$family" ] && nfproto "$family"
-	[ -n "$proto" ] && l4proto "$proto"
-	[ -n "$dest" ] && oifname "$(fw4 -q zone "$dest")"
-	[ "$direction" = "out" ] && oifname "$device"
-	[ -n "$dest_ip" ] && { daddr "$dest_ip" "$family" || return 1; }
-	[ -n "$dest_port" ] && dport "$dest_port" "$proto"
-	[ -n "$src" ] && iifname "$(fw4 -q zone "$src")"
-	[ "$direction" = "in" ] && iifname "$device"
-	[ -n "$src_ip" ] && { saddr "$src_ip" "$family" || return 1; }
-	[ -n "$src_port" ] && sport "$src_port" "$proto"
+	nfproto "$family" || return 1
+	l4proto "$proto" || return 1
+	oifzone "$dest" || return 1
+	daddr "$dest_ip" "$family" || return 1
+	dport "$dest_port" "$proto" || return 1
+	iifzone "$src" || return 1
+	saddr "$src_ip" "$family" || return 1
+	sport "$src_port" "$proto" || return 1
+	device "$device" "$direction" || return 1
 	verdict "$class" || return 1
-	[ -n "$name" ] && comment "$name"
+	comment "$name" || return 1
 
 	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
 		echo "insert rule inet dscpclassify dscp_match $nfproto $l4proto $oifname $dport $iifname $sport $verdict $comment" >>"/tmp/etc/dscpclassify-post.include"
-		return
+		return 0
 	}
 	[ -n "$daddr$saddr" ] && {
 		echo "insert rule inet dscpclassify dscp_match $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport $verdict $comment" >>"/tmp/etc/dscpclassify-post.include"
@@ -173,6 +221,7 @@ create_user_rule() {
 	[ -n "$daddr6$saddr6" ] && {
 		echo "insert rule inet dscpclassify dscp_match $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport $verdict $comment" >>"/tmp/etc/dscpclassify-post.include"
 	}
+	return 0
 }
 
 list_append() {
@@ -191,7 +240,7 @@ config_foreach_reverse() {
 }
 
 create_pre_include() {
-	local ht_bytes
+	local threaded_service_bytes unclassified_bytes
 	rm -f "/tmp/etc/dscpclassify-pre.include"
 
 	config_get threaded_service_bytes globals threaded_service_bytes 1000000
@@ -204,7 +253,7 @@ create_pre_include() {
 }
 
 create_post_include() {
-	local lan_hints wmm threaded_client_kbps
+	local lan_hints threaded_client_kbps wmm
 	rm -f "/tmp/etc/dscpclassify-post.include"
 
 	config_get_bool lan_hints globals lan_hints 1
