@@ -293,20 +293,29 @@ create_post_include() {
 	echo "add rule inet dscpclassify postrouting ct mark and \$ct_dscp vmap @ct_dscp" >>"/tmp/etc/dscpclassify-post.include"
 }
 
-start_service() {
-	nft delete table inet dscpclassify 2>/dev/null
-
-	[ -n "$lan" ] || exit 0
-	[ -n "$wan" ] || exit 0
-
+setup() {
+	[ -n "$lan" ] || return 1
+	[ -n "$wan" ] || return 1
 	config_load dscpclassify || return 1
 	create_pre_include
 	create_post_include
-	nft -f /etc/dscpclassify.d/dscpclassify.nft || return 1
+	nft -f /etc/dscpclassify.d/main.nft || return 1
 	rm -f "/tmp/etc/dscpclassify-pre.include"
 	rm -f "/tmp/etc/dscpclassify-post.include"
+}
 
+start_service() {
+	nft delete table inet dscpclassify 2>/dev/null
+	setup || return 1
 	logger -t dscpclassify "Service started"
+}
+
+reload_service() {
+	for i in $(nft -j list chains | jsonfilter -e '@.nftables[@.chain.table="dscpclassify"].chain.name'); do
+		nft flush chain inet dscpclassify "$i"
+	done
+	setup || return 1
+	logger -t dscpclassify "Service reloaded"
 }
 
 stop_service() {
