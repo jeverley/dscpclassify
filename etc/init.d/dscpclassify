@@ -314,6 +314,9 @@ reload_service() {
 	for i in $(nft -j list chains | jsonfilter -e '@.nftables[@.chain.table="dscpclassify"].chain.name'); do
 		nft flush chain inet dscpclassify "$i"
 	done
+	for i in $(nft -j list maps | jsonfilter -e '@.nftables[@.map.table="dscpclassify"].map.name'); do
+		nft flush map inet dscpclassify "$i"
+	done
 	setup || return 1
 	logger -t dscpclassify "Service reloaded"
 }
