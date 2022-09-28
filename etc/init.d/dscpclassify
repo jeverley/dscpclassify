@@ -53,19 +53,23 @@ sport() {
 	sport="th sport { $(mklist "$1") }"
 }
 
-daddr() {
-	local ipv4 ipv6
+check_ip() {
 	for i in $1; do
 		case $i in
 		[0-9]*.[0-9]*.[0-9]*.[0-9]*) ipv4="$ipv4 $i" ;;
 		*:*) ipv6="$ipv6 $i" ;;
-		*)
-			logger -t dscpclassify "Rule contains an invalid dest_ip"
-			return 1
-			;;
+		*) return 1 ;;
 		esac
 	done
+}
 
+daddr() {
+	local ipv4 ipv6
+	
+	check_ip "$1" || {
+		logger -t dscpclassify "Rule contains an invalid dest_ip"
+		return 1
+	}
 	if [ -n "$ipv4" ] && [ "$2" = "ipv6" ]; then
 		logger -t dscpclassify "Rules cannot combine an ipv4 dest_ip with the ipv6 family"
 		return 1
@@ -82,17 +86,11 @@ daddr() {
 
 saddr() {
 	local ipv4 ipv6
-	for i in $1; do
-		case $i in
-		[0-9]*.[0-9]*.[0-9]*.[0-9]*) ipv4="$ipv4 $i" ;;
-		*:*) ipv6="$ipv6 $i" ;;
-		*)
-			logger -t dscpclassify "Rule contains an invalid src_ip"
-			return 1
-			;;
-		esac
-	done
 
+	check_ip "$1" || {
+		logger -t dscpclassify "Rule contains an invalid src_ip"
+		return 1
+	}
 	if [ -n "$ipv4" ] && [ "$2" = "ipv6" ]; then
 		logger -t dscpclassify "Rules cannot combine an ipv4 src_ip with the ipv6 family"
 		return 1
