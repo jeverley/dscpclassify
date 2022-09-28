@@ -7,7 +7,7 @@ include "/tmp/etc/dscpclassify-pre.include"
 define ct_dscp = 0x0000003f
 define ct_dyn = 0x00000080
 define ct_dyn_dscp = 0x000000ff
-define ct_ht = 0x00000040
+define ct_unclassified = 0x00000040
 define ct_unused = 0xffffff00
 define ct_unused_dyn = 0xffffff80
 define ct_unused_dyn_dscp = 0xffffffbf
@@ -169,8 +169,8 @@ table inet dscpclassify {
         ## Assess UDP packets for Real-Time class (CS4)
         meta l4proto udp ct state != new th dport != { 80, 443 } th sport != { 80, 443 } jump dynamic_realtime
 
-        ## Mark unclassified >10mB connections as non-dynamic Best Effort (CS0)
-        ct mark and $ct_dscp == 0 ct bytes > $unclassified_bytes ct mark set ct mark and $ct_unused or $ct_ht
+        ## Mark unclassified connections as non-dynamic Best Effort (CS0)
+        ct mark and $ct_dscp == 0 ct bytes > $unclassified_bytes ct mark set ct mark and $ct_unused or $ct_unclassified
     }
 
     chain detect_threading {
@@ -210,17 +210,18 @@ table inet dscpclassify {
     }
 
     chain dynamic_realtime {
-        ## Set high-throughput bit on connections exceeding 200pps and clear the DSCP bits
-        meter udpht { ip saddr . ip daddr . th sport . th dport limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $ct_ht return
-        meter udpht6 { ip6 saddr . ip6 daddr . th sport . th dport limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $ct_ht return
+        ## Classify high-throughput connections exceeding 200pps as Best Effort (CS0)
+        update @high_throughput { meta l4proto . ip saddr . th sport . ip daddr . th dport timeout 5s limit rate over 1/second burst 1 packets } ct mark set ct mark and $ct_unused_dyn or $cs0 return
+        update @high_throughput6 { meta l4proto . ip6 saddr . th sport . ip6 daddr . th dport timeout 5s limit rate over 1/second burst 1 packets } ct mark set ct mark and $ct_unused_dyn or $cs0 return
+        
+        ## Return high-throughput connection responses
+        meta l4proto . ip daddr . th dport . ip saddr . th sport @high_throughput return
+        meta l4proto . ip6 daddr . th dport . ip6 saddr . th sport @high_throughput6 return
 
-        ## Small random chance of clearing the high-throughput bit
-        ct mark and $ct_ht == $ct_ht numgen random mod 10000 < 50 ct mark set ct mark and $ct_unused_dyn_dscp
+        ## Classify small packet flows as real-time (CS4)
+        ct avgpkt 0-450 ct mark set ct mark and $ct_unused_dyn or $cs4 return
 
-        ## Prioritize small packet flows as real-time (CS4)
-        ct mark and $ct_ht == 0 ct avgpkt 0-450 ct mark set ct mark and $ct_unused_dyn or $cs4 return
-
-        ## Any remaining packets are Best Effort (CS0)
+        ## Classify remaining packets as Best Effort (CS0)
         ct mark set ct mark and $ct_unused_dyn or $cs0
     }
 
@@ -241,6 +242,16 @@ table inet dscpclassify {
 
     set threaded_clients6 {
         type inet_proto . ipv6_addr . inet_service
+        flags timeout
+    }
+
+    set high_throughput {
+        type inet_proto . ipv4_addr . inet_service . ipv4_addr . inet_service
+        flags timeout
+    }
+
+    set high_throughput6 {
+        type inet_proto . ipv6_addr . inet_service . ipv6_addr . inet_service
         flags timeout
     }
 
