@@ -52,6 +52,12 @@ iifzone() {
 	iifname "$device"
 }
 
+check_port() {
+	for i in $1; do
+		echo "$i" | grep -q -e "^\d\+-\d\+$" -e "^\d\+$" || return 1
+	done
+}
+
 check_proto() {
 	for i in $1; do
 		case $i in
@@ -63,6 +69,10 @@ check_proto() {
 
 dport() {
 	[ -n "$1" ] || return 0
+	check_port "$1" || {
+		logger -t dscpclassify "Rule contains an invalid port"
+		return 1
+	}
 	check_proto "$2" || {
 		logger -t dscpclassify "Rules cannot combine a dest_port with protocols other than 'tcp' or 'udp'"
 		return 1
@@ -72,6 +82,10 @@ dport() {
 
 sport() {
 	[ -n "$1" ] || return 0
+	check_port "$1" || {
+		logger -t dscpclassify "Rule contains an invalid port"
+		return 1
+	}
 	check_proto "$2" || {
 		logger -t dscpclassify "Rules cannot combine a src_port with protocols other than 'tcp' or 'udp'"
 		return 1
@@ -255,13 +269,13 @@ create_pre_include() {
 }
 
 create_post_include() {
-	local lan_hints threaded_client_kbps wmm
+	local client_hints threaded_client_kbps wmm
 	rm -f "/tmp/etc/dscpclassify-post.include"
 
-	config_get_bool lan_hints globals lan_hints 1
-	[ "$lan_hints" = 1 ] && {
-		echo "insert rule inet dscpclassify static_classify iifname \$lan ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct" >>"/tmp/etc/dscpclassify-post.include"
-		echo "insert rule inet dscpclassify static_classify iifname \$lan ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct" >>"/tmp/etc/dscpclassify-post.include"
+	config_get_bool client_hints globals client_hints 1
+	[ "$client_hints" = 1 ] && {
+		echo "insert rule inet dscpclassify static_classify iifname != \$wan ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct" >>"/tmp/etc/dscpclassify-post.include"
+		echo "insert rule inet dscpclassify static_classify iifname != \$wan ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct" >>"/tmp/etc/dscpclassify-post.include"
 	}
 
 	config_foreach_reverse create_user_rule rule
