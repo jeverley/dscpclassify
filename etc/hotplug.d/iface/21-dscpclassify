@@ -12,4 +12,4 @@ has_zone() {
 
 has_zone || exit 0
 
-/etc/init.d/dscpclassify start
+/etc/init.d/dscpclassify reload
