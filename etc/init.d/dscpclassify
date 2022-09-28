@@ -30,6 +30,28 @@ iifname() {
 	iifname="iifname { $(mklist "$1") }"
 }
 
+oifzone() {
+	local device
+
+	[ -n "$1" ] || return 0
+	device="$(fw4 -q zone "$1")" || {
+		logger -t dscpclassify "Rule contains an invalid dest zone"
+		return 1
+	}
+	oifname "$device"
+}
+
+iifzone() {
+	local device
+
+	[ -n "$1" ] || return 0
+	device="$(fw4 -q zone "$1")" || {
+		logger -t dscpclassify "Rule contains an invalid src zone"
+		return 1
+	}
+	iifname "$device"
+}
+
 check_proto() {
 	for i in $1; do
 		case $i in
@@ -113,6 +135,25 @@ saddr() {
 	return 0
 }
 
+device() {
+	[ -n "$1$2" ] || return 0
+	if [ -z "$1" ] || [ -z "$2" ]; then
+		logger -t dscpclassify "Rules must use the device and direction options in conjunction"
+		return 1
+	fi
+	[ "$2" = "in" ] && {
+		iifname "$1"
+		return 0
+	}
+	[ "$2" = "out" ] && {
+		oifname "$1"
+		return 0
+	}
+	logger -t dscpclassify "The direction rule option must be either 'in' or 'out'"
+	return 1
+
+}
+
 verdict() {
 	local class
 
@@ -138,45 +179,6 @@ verdict() {
 comment() {
 	[ -n "$1" ] || return 0
 	comment="comment \"$*\""
-}
-
-iifzone() {
-	local device
-
-	[ -n "$1" ] || return 0
-	device="$(fw4 -q zone "$1")" || return 1
-	iifname "$device"
-}
-
-oifzone() {
-	local device
-
-	[ -n "$1" ] || return 0
-	device="$(fw4 -q zone "$1")" || return 1
-	oifname "$device"
-}
-
-device() {
-	[ -n "$1$2" ] || return 0
-	if [ -n "$1" ] && [ -n "$2" ]; then
-		case $2 in
-		"in")
-			iifname "$1"
-			return 0
-			;;
-		"out")
-			oifname "$1"
-			return 0
-			;;
-		*)
-			logger -t dscpclassify "The direction rule option must be either 'in' or 'out'"
-			return 1
-			;;
-		esac
-	else
-		logger -t dscpclassify "Rules must use the device and direction options in conjunction"
-		return 1
-	fi
 }
 
 create_user_rule() {
