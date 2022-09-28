@@ -22,8 +22,8 @@ config rule
 	list dest_port '5353'
 	option class 'cs5'
 ```
-### LAN client DSCP hinting
-The service can be configured to apply the DSCP mark applied by a LAN client.<br />
+### Client DSCP hinting
+The service can be configured to apply the DSCP mark supplied by a non WAN originating client.<br />
 This function ignores CS6 and CS7 classes to avoid abuse from inappropriately configed LAN clients such as IoT devices.
 
 ### Dynamic classification
@@ -91,7 +91,7 @@ A working default configuration is provided with the service.
 
 |  Config option | Description  | Type  | Default  |
 |---|---|---|---|
-| lan_hints | Adopt the DSCP class set by a LAN client (this exludes CS6 and CS7 classes to avoid abuse)  | boolean  |  1 |
+| client_hints | Adopt the DSCP class supplied by a non-WAN client (this exludes CS6 and CS7 classes to avoid abuse)  | boolean  |  1 |
 | threaded_client_kbps | The rate in kBps when a threaded client port (i.e. P2P) is classed as bulk (cs1)  | int  |  10 |
 | threaded_service_bytes | The total bytes before a threaded service's connection is classed as high-throughput (af13)  | int  |  1000000 |
 | unclassified_bytes | The total bytes before an unclassified connection is ignored by the dynamic classifier  | int  |  5 * threaded_service_bytes |
