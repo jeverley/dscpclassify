@@ -94,6 +94,7 @@ A working default configuration is provided with the service.
 | lan_hints | Adopt the DSCP class set by a LAN client (this exludes CS6 and CS7 classes to avoid abuse)  | boolean  |  1 |
 | threaded_client_kbps | The rate in kBps when a threaded client port (i.e. P2P) is classed as bulk (cs1)  | int  |  10 |
 | threaded_service_bytes | The total bytes before a threaded service's connection is classed as high-throughput (af13)  | int  |  1000000 |
+| unclassified_bytes | The total bytes before an unclassified connection is ignored by the dynamic classifier  | int  |  5 * threaded_service_bytes |
 | wmm  | When enabled the service will mark LAN bound packets with DSCP values respective of WMM (RFC-8325)  | boolean  |  1 |
 
 <br />
