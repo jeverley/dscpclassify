@@ -170,16 +170,16 @@ table inet dscpclassify {
         meta l4proto udp ct state != new th dport != { 80, 443 } th sport != { 80, 443 } jump dscp_dynamic_rt
 
         ## Mark unclassified >10mB connections as non-dynamic Best Effort (CS0)
-        ct mark and $ct_dscp == 0 ct bytes > 10000000 ct mark set ct mark and $ct_unused or $ct_ht
+        ct mark and $ct_dscp == 0 ct bytes > $unclassified_bytes ct mark set ct mark and $ct_unused or $ct_ht
     }
 
     chain dscp_dynamic_rt {
-        ## Small random chance of removing the high-throughput mark from connections
-        ct mark and $ct_ht == $ct_ht numgen random mod 10000 < 50 ct mark set ct mark and $ct_unused_dyn_dscp
-
-        ## Mark connections exceeding 200pps as high-throughput
+        ## Set high-throughput bit on connections exceeding 200pps and clear the DSCP bits
         meter udpht { ip saddr . ip daddr . th sport . th dport limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $ct_ht return
         meter udpht6 { ip6 saddr . ip6 daddr . th sport . th dport limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $ct_ht return
+
+        ## Small random chance of clearing the high-throughput bit
+        ct mark and $ct_ht == $ct_ht numgen random mod 10000 < 50 ct mark set ct mark and $ct_unused_dyn_dscp
 
         ## Prioritize small packet flows as real-time (CS4)
         ct mark and $ct_ht == 0 ct avgpkt 0-450 ct mark set ct mark and $ct_unused_dyn or $cs4 return
