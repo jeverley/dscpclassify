@@ -10,7 +10,6 @@ define ct_dyn_dscp = 0x000000ff
 define ct_unclassified = 0x00000040
 define ct_unused = 0xffffff00
 define ct_unused_dyn = 0xffffff80
-define ct_unused_dyn_dscp = 0xffffffbf
 
 ## DSCP classification values
 define cs0 = 0
@@ -166,7 +165,7 @@ table inet dscpclassify {
         meta l4proto . ip daddr . th dport @threaded_clients goto threaded_client_response
         meta l4proto . ip6 daddr . th dport @threaded_clients6 goto threaded_client_response
 
-        ## Assess UDP packets for Real-Time class (CS4)
+        ## Assess UDP connections for Real-Time class (CS4)
         meta l4proto udp ct state != new th dport != { 80, 443 } th sport != { 80, 443 } jump dynamic_realtime
 
         ## Mark unclassified connections as non-dynamic Best Effort (CS0)
