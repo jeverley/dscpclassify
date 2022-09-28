@@ -1,6 +1,6 @@
 #!/usr/sbin/nft -f
 
-## Include dynamic pre content
+## Include configurable variable definitions
 include "/tmp/etc/dscpclassify-pre.include"
 
 ## Masks for extracting/storing data in the conntrack mark
@@ -125,22 +125,22 @@ table inet dscpclassify {
     }
 
     ## Classify connections to the router
-    chain hook_input {
+    chain input {
         type filter hook input priority 2; policy accept
-        ct mark and $ct_dyn_dscp == 0 ct direction original jump dscp_match
-        ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
+        ct mark and $ct_dyn_dscp == 0 ct direction original jump static_classify
+        ct mark and $ct_dyn == $ct_dyn jump dynamic_classify
     }
 
     ## Classify and DSCP mark connections from/forwarded via the router
-    chain hook_postrouting {
+    chain postrouting {
         type filter hook postrouting priority 2; policy accept
-        ct mark and $ct_dyn_dscp == 0 ct direction original jump dscp_match
-        ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
+        ct mark and $ct_dyn_dscp == 0 ct direction original jump static_classify
+        ct mark and $ct_dyn == $ct_dyn jump dynamic_classify
 
         ## DSCP marking rules are added here by init script
     }
 
-    chain dscp_match {
+    chain static_classify {
         ## User defined rules in '/etc/config/dscpclassify' are inserted here by init script
 
         ## Unclassified packets get dynamic conntrack mark
@@ -148,11 +148,11 @@ table inet dscpclassify {
     }
 
     ## Dynamically categorise connections
-    chain dscp_dynamic {
+    chain dynamic_classify {
         meta l4proto != { tcp, udp } return
 
-        ## Detect connection threading by counting new connections
-        ct packets 1 goto dscp_detect_threading
+        ## Detect connection threading by counting connections opened within a time period
+        ct packets 1 goto detect_threading
 
         ## Assess threaded service connections for downgrade to High-Throughput class (AF11)
         meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport @threaded_services goto threaded_service
@@ -167,25 +167,20 @@ table inet dscpclassify {
         meta l4proto . ip6 daddr . th dport @threaded_clients6 goto threaded_client_response
 
         ## Assess UDP packets for Real-Time class (CS4)
-        meta l4proto udp ct state != new th dport != { 80, 443 } th sport != { 80, 443 } jump dscp_dynamic_rt
+        meta l4proto udp ct state != new th dport != { 80, 443 } th sport != { 80, 443 } jump dynamic_realtime
 
         ## Mark unclassified >10mB connections as non-dynamic Best Effort (CS0)
         ct mark and $ct_dscp == 0 ct bytes > $unclassified_bytes ct mark set ct mark and $ct_unused or $ct_ht
     }
 
-    chain dscp_dynamic_rt {
-        ## Set high-throughput bit on connections exceeding 200pps and clear the DSCP bits
-        meter udpht { ip saddr . ip daddr . th sport . th dport limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $ct_ht return
-        meter udpht6 { ip6 saddr . ip6 daddr . th sport . th dport limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $ct_ht return
+    chain detect_threading {
+        ## Detect multiple connections being opened to a service from a single source address
+        meter tsdetect { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 5s limit rate over 2/minute } add @threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 20s }
+        meter tsdetect6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 5s limit rate over 2/minute } add @threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 20s }
 
-        ## Small random chance of clearing the high-throughput bit
-        ct mark and $ct_ht == $ct_ht numgen random mod 10000 < 50 ct mark set ct mark and $ct_unused_dyn_dscp
-
-        ## Prioritize small packet flows as real-time (CS4)
-        ct mark and $ct_ht == 0 ct avgpkt 0-450 ct mark set ct mark and $ct_unused_dyn or $cs4 return
-
-        ## Any remaining packets are Best Effort (CS0)
-        ct mark set ct mark and $ct_unused_dyn or $cs0
+        ## Detect multiple connections being opened from a single source port (i.e. P2P)
+        meter tcdetect { meta l4proto . ip saddr . th sport timeout 5s limit rate over 10/minute } add @threaded_clients { meta l4proto . ip saddr . th sport timeout 5s }
+        meter tcdetect6 { meta l4proto . ip6 saddr . th sport timeout 5s limit rate over 10/minute } add @threaded_clients6 { meta l4proto . ip6 saddr . th sport timeout 5s }
     }
 
     ## Mark high-throughput threaded connections to a service as AF13
@@ -214,14 +209,19 @@ table inet dscpclassify {
         ## Threaded bulk client meter rules are added here by init script
     }
 
-    chain dscp_detect_threading {
-        ## Detect multiple connections being opened to a service from a single source address
-        meter tsdetect { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 5s limit rate over 2/minute } add @threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 20s }
-        meter tsdetect6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 5s limit rate over 2/minute } add @threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 20s }
+    chain dynamic_realtime {
+        ## Set high-throughput bit on connections exceeding 200pps and clear the DSCP bits
+        meter udpht { ip saddr . ip daddr . th sport . th dport limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $ct_ht return
+        meter udpht6 { ip6 saddr . ip6 daddr . th sport . th dport limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $ct_ht return
 
-        ## Detect multiple connections being opened from a single source port (i.e. P2P)
-        meter tcdetect { meta l4proto . ip saddr . th sport timeout 5s limit rate over 10/minute } add @threaded_clients { meta l4proto . ip saddr . th sport timeout 5s }
-        meter tcdetect6 { meta l4proto . ip6 saddr . th sport timeout 5s limit rate over 10/minute } add @threaded_clients6 { meta l4proto . ip6 saddr . th sport timeout 5s }
+        ## Small random chance of clearing the high-throughput bit
+        ct mark and $ct_ht == $ct_ht numgen random mod 10000 < 50 ct mark set ct mark and $ct_unused_dyn_dscp
+
+        ## Prioritize small packet flows as real-time (CS4)
+        ct mark and $ct_ht == 0 ct avgpkt 0-450 ct mark set ct mark and $ct_unused_dyn or $cs4 return
+
+        ## Any remaining packets are Best Effort (CS0)
+        ct mark set ct mark and $ct_unused_dyn or $cs0
     }
 
     set threaded_services {
@@ -445,5 +445,5 @@ table inet dscpclassify {
     }
 }
 
-## Include dynamic post content
+## Include configurable rules
 include "/tmp/etc/dscpclassify-post.include"
