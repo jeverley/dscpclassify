@@ -137,7 +137,7 @@ table inet dscpclassify {
         ct mark and $ct_dyn_dscp == 0 ct direction original jump dscp_match
         ct mark and $ct_dyn == $ct_dyn jump dscp_dynamic
 
-        ## DSCP restore rules are added here by init script
+        ## DSCP marking rules are added here by init script
     }
 
     chain dscp_match {
@@ -188,7 +188,7 @@ table inet dscpclassify {
         ct mark set ct mark and $ct_unused_dyn or $cs0
     }
 
-    ## Mark high-throughput threaded connections to a service as AF11
+    ## Mark high-throughput threaded connections to a service as AF13
     chain threaded_service {
         ct bytes < $threaded_service_bytes return
         ct mark set ct mark and $ct_unused_dyn or $af13
@@ -196,7 +196,7 @@ table inet dscpclassify {
         update @threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 60s }
     }
 
-    ## Mark high-throughput threaded connections to a service as AF11
+    ## Mark high-throughput threaded connections to a service as AF13
     chain threaded_service_response {
         ct bytes < $threaded_service_bytes return
         ct mark set ct mark and $ct_unused_dyn or $af13
@@ -206,18 +206,18 @@ table inet dscpclassify {
 
     ## Mark threaded bulk clients as CS1
     chain threaded_client {
-        ## Threaded client meter rules are added here by init script
+        ## Threaded bulk client meter rules are added here by init script
     }
 
     ## Mark threaded bulk clients as CS1
     chain threaded_client_response {
-        ## Threaded client meter rules are added here by init script
+        ## Threaded bulk client meter rules are added here by init script
     }
 
     chain dscp_detect_threading {
         ## Detect multiple connections being opened to a service from a single source address
-        meter tsdetect { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 5s limit rate over 2/minute } add @threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 5s }
-        meter tsdetect6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 5s limit rate over 2/minute } add @threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 5s }
+        meter tsdetect { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 5s limit rate over 2/minute } add @threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 20s }
+        meter tsdetect6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 5s limit rate over 2/minute } add @threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 20s }
 
         ## Detect multiple connections being opened from a single source port (i.e. P2P)
         meter tcdetect { meta l4proto . ip saddr . th sport timeout 5s limit rate over 10/minute } add @threaded_clients { meta l4proto . ip saddr . th sport timeout 5s }
