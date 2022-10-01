@@ -54,7 +54,7 @@ iifzone() {
 
 check_port() {
 	for i in $1; do
-		echo "$i" | grep -q -e "^\d\+-\d\+$" -e "^\d\+$" || return 1
+		echo "$i" | grep -q -E -e "^[[:digit:]]+-[[:digit:]]+$" -e "^[[:digit:]]+$" || return 1
 	done
 }
 
