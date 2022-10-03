@@ -13,6 +13,7 @@ define ct_unused_dyn = 0xffffff80
 
 ## DSCP classification values
 define cs0 = 0
+define lephb = 1
 define cs1 = 8
 define af11 = 10
 define af12 = 12
@@ -41,6 +42,7 @@ table inet dscpclassify {
         type mark : verdict
         elements = {
             $cs0 : goto dscp_set_cs0,
+            $lephb : goto dscp_set_le,
             $cs1 : goto dscp_set_cs1,
             $af11 : goto dscp_set_af11,
             $af12 : goto dscp_set_af12,
@@ -70,6 +72,7 @@ table inet dscpclassify {
         type mark : verdict
         elements = {
             $cs0 : goto dscp_set_cs0,   # WMM BE
+            $lephb : goto dscp_set_le,  # WMM BK
             $cs1 : goto dscp_set_cs1,   # WMM BK
             $af11 : goto dscp_set_cs0,  # WMM BE
             $af12 : goto dscp_set_cs0,  # WMM BE
@@ -99,6 +102,7 @@ table inet dscpclassify {
         type dscp : verdict
         elements = {
             cs0 : goto ct_set_cs0,
+            $lephb : goto ct_set_le,
             cs1 : goto ct_set_cs1,
             af11 : goto ct_set_af11,
             af12 : goto ct_set_af12,
@@ -116,7 +120,7 @@ table inet dscpclassify {
             af42 : goto ct_set_af42,
             af43 : goto ct_set_af43,
             cs5 : goto ct_set_cs5,
-            44 : goto ct_set_va,
+            $va : goto ct_set_va,
             ef : goto ct_set_ef,
             cs6 : goto ct_set_cs6,
             cs7 : goto ct_set_cs7,
@@ -126,6 +130,7 @@ table inet dscpclassify {
     ## Classify connections to the router
     chain input {
         type filter hook input priority 2; policy accept
+        meta iifname "lo" return
         ct mark and $ct_dyn_dscp == 0 ct direction original jump static_classify
         ct mark and $ct_dyn == $ct_dyn jump dynamic_classify
     }
@@ -133,6 +138,7 @@ table inet dscpclassify {
     ## Classify and DSCP mark connections from/forwarded via the router
     chain postrouting {
         type filter hook postrouting priority 2; policy accept
+        meta oifname "lo" return
         ct mark and $ct_dyn_dscp == 0 ct direction original jump static_classify
         ct mark and $ct_dyn == $ct_dyn jump dynamic_classify
 
@@ -169,7 +175,7 @@ table inet dscpclassify {
         meta l4proto udp ct state != new th dport != { 80, 443 } th sport != { 80, 443 } jump dynamic_realtime
 
         ## Mark unclassified connections as non-dynamic Best Effort (CS0)
-        ct mark and $ct_dscp == 0 ct bytes > $unclassified_bytes ct mark set ct mark and $ct_unused or $ct_unclassified
+        ct mark and $ct_dscp == 0 ct bytes > $unclassified_bytes goto ct_set_cs0
     }
 
     chain detect_threading {
@@ -259,6 +265,11 @@ table inet dscpclassify {
     chain dscp_set_cs0 {
         ip dscp set cs0
         ip6 dscp set cs0
+    }
+
+    chain dscp_set_le {
+        ip dscp set $lephb
+        ip6 dscp set $lephb
     }
 
     chain dscp_set_cs1 {
@@ -368,7 +379,11 @@ table inet dscpclassify {
 
     ## Set conntrack DSCP mark without modifying unused bits
     chain ct_set_cs0 {
-        ct mark set ct mark and $ct_unused or $cs0
+        ct mark set ct mark and $ct_unused or $cs0 or $ct_unclassified
+    }
+
+    chain ct_set_le {
+        ct mark set ct mark and $ct_unused or $lephb
     }
 
     chain ct_set_cs1 {
