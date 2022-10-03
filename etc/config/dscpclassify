@@ -1,5 +1,5 @@
 config global 'global'
-	option lan_hints '1'
+	option client_hints '1'
 	option threaded_client_kbps '10'
 	option threaded_service_bytes '1000000'
 	option wmm '1'
@@ -14,9 +14,10 @@ config rule
 	option class 'cs5'
 
 config rule
-	option name 'DHCP'
+	option name 'BOOTP/DHCP'
 	option proto 'udp'
-	option dest_port '68'
+	list dest_port '67'
+	list dest_port '68'
 	option class 'cs5'
 
 config rule
