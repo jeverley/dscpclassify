@@ -173,7 +173,7 @@ table inet dscpclassify {
         meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport @threaded_services6 goto threaded_service_response
 
         ## Assess UDP connections for Real-Time class (CS4)
-        meta l4proto udp ct state != new th dport != { 80, 443 } th sport != { 80, 443 } jump dynamic_realtime
+        meta l4proto udp th dport != { 80, 443 } th sport != { 80, 443 } jump dynamic_realtime
 
         ## Mark unclassified connections as non-dynamic Best Effort (CS0)
         ct mark and $ct_dscp == 0 ct bytes > $unclassified_bytes goto ct_set_cs0
@@ -217,12 +217,12 @@ table inet dscpclassify {
 
     chain dynamic_realtime {
         ## Classify high-throughput connections exceeding 200pps as Best Effort (CS0)
-        update @high_throughput { meta l4proto . ip saddr . th sport . ip daddr . th dport timeout 5s limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $cs0 return
-        update @high_throughput6 { meta l4proto . ip6 saddr . th sport . ip6 daddr . th dport timeout 5s limit rate over 200/second burst 100 packets } ct mark set ct mark and $ct_unused_dyn or $cs0 return
+        meter htdetect { ip saddr . th sport . ip daddr . th dport limit rate over 200/second burst 100 packets } update @high_throughput { ip saddr . th sport . ip daddr . th dport timeout 5s } ct mark set ct mark and $ct_unused_dyn or $cs0 return
+        meter htdetect6 { ip6 saddr . th sport . ip6 daddr . th dport limit rate over 200/second burst 100 packets } update @high_throughput6 { ip6 saddr . th sport . ip6 daddr . th dport timeout 5s } ct mark set ct mark and $ct_unused_dyn or $cs0 return
 
         ## Return high-throughput connection responses
-        meta l4proto . ip daddr . th dport . ip saddr . th sport @high_throughput return
-        meta l4proto . ip6 daddr . th dport . ip6 saddr . th sport @high_throughput6 return
+        ip daddr . th dport . ip saddr . th sport @high_throughput return
+        ip6 daddr . th dport . ip6 saddr . th sport @high_throughput6 return
 
         ## Classify small packet flows as real-time (CS4)
         ct avgpkt 0-450 ct mark set ct mark and $ct_unused_dyn or $cs4 return
@@ -253,12 +253,12 @@ table inet dscpclassify {
     }
 
     set high_throughput {
-        type inet_proto . ipv4_addr . inet_service . ipv4_addr . inet_service
+        type ipv4_addr . inet_service . ipv4_addr . inet_service
         flags timeout
     }
 
     set high_throughput6 {
-        type inet_proto . ipv6_addr . inet_service . ipv6_addr . inet_service
+        type ipv6_addr . inet_service . ipv6_addr . inet_service
         flags timeout
     }
 
