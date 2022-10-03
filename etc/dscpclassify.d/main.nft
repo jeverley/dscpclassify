@@ -154,22 +154,23 @@ table inet dscpclassify {
 
     ## Dynamically categorise connections
     chain dynamic_classify {
+        ct state new return
         meta l4proto != { tcp, udp } return
 
         ## Detect connection threading by counting connections opened within a time period
-        ct packets 1 goto detect_threading
-
-        ## Assess threaded service connections for downgrade to High-Throughput class (AF11)
-        meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport @threaded_services goto threaded_service
-        meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport @threaded_services6 goto threaded_service
-        meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th sport @threaded_services goto threaded_service_response
-        meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport @threaded_services6 goto threaded_service_response
+        ct packets 2 goto detect_threading
 
         ## Assess threaded client connections (i.e. P2P) for downgrade to Bulk class (CS1)
         meta l4proto . ip saddr . th sport @threaded_clients goto threaded_client
         meta l4proto . ip6 saddr . th sport @threaded_clients6 goto threaded_client
         meta l4proto . ip daddr . th dport @threaded_clients goto threaded_client_response
         meta l4proto . ip6 daddr . th dport @threaded_clients6 goto threaded_client_response
+
+        ## Assess threaded service connections for downgrade to High-Throughput class (AF11)
+        meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport @threaded_services goto threaded_service
+        meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport @threaded_services6 goto threaded_service
+        meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th sport @threaded_services goto threaded_service_response
+        meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport @threaded_services6 goto threaded_service_response
 
         ## Assess UDP connections for Real-Time class (CS4)
         meta l4proto udp ct state != new th dport != { 80, 443 } th sport != { 80, 443 } jump dynamic_realtime
@@ -179,13 +180,23 @@ table inet dscpclassify {
     }
 
     chain detect_threading {
-        ## Detect multiple connections being opened to a service from a single source address
-        meter tsdetect { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 5s limit rate over 2/minute } add @threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 20s }
-        meter tsdetect6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 5s limit rate over 2/minute } add @threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 20s }
-
         ## Detect multiple connections being opened from a single source port (i.e. P2P)
-        meter tcdetect { meta l4proto . ip saddr . th sport timeout 5s limit rate over 10/minute } add @threaded_clients { meta l4proto . ip saddr . th sport timeout 5s }
-        meter tcdetect6 { meta l4proto . ip6 saddr . th sport timeout 5s limit rate over 10/minute } add @threaded_clients6 { meta l4proto . ip6 saddr . th sport timeout 5s }
+        meter tcdetect { meta l4proto . ip daddr . th dport timeout 5s limit rate over 10/minute } add @threaded_clients { meta l4proto . ip daddr . th dport timeout 5s }
+        meter tcdetect6 { meta l4proto . ip6 daddr . th dport timeout 5s limit rate over 10/minute } add @threaded_clients6 { meta l4proto . ip6 daddr . th dport timeout 5s }
+
+        ## Detect multiple connections being opened to a service from a single source address
+        meter tsdetect { meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th dport timeout 5s limit rate over 2/minute } add @threaded_services { meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th dport timeout 20s }
+        meter tsdetect6 { meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th dport timeout 5s limit rate over 2/minute } add @threaded_services6 { meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th dport timeout 20s }
+    }
+
+    ## Mark threaded bulk clients as CS1
+    chain threaded_client {
+        ## Threaded bulk client meter rules are added here by init script
+    }
+
+    ## Mark threaded bulk clients as CS1
+    chain threaded_client_response {
+        ## Threaded bulk client meter rules are added here by init script
     }
 
     ## Mark high-throughput threaded connections to a service as AF13
@@ -202,16 +213,6 @@ table inet dscpclassify {
         ct mark set ct mark and $ct_unused_dyn or $af13
         update @threaded_services { meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th sport timeout 60s }
         update @threaded_services6 { meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport timeout 60s }
-    }
-
-    ## Mark threaded bulk clients as CS1
-    chain threaded_client {
-        ## Threaded bulk client meter rules are added here by init script
-    }
-
-    ## Mark threaded bulk clients as CS1
-    chain threaded_client_response {
-        ## Threaded bulk client meter rules are added here by init script
     }
 
     chain dynamic_realtime {
@@ -231,16 +232,6 @@ table inet dscpclassify {
     }
 
     ## Sets for stateful tracking
-    set threaded_services {
-        type inet_proto . ipv4_addr . ipv4_addr . inet_service
-        flags timeout
-    }
-
-    set threaded_services6 {
-        type inet_proto . ipv6_addr . ipv6_addr . inet_service
-        flags timeout
-    }
-
     set threaded_clients {
         type inet_proto . ipv4_addr . inet_service
         flags timeout
@@ -248,6 +239,16 @@ table inet dscpclassify {
 
     set threaded_clients6 {
         type inet_proto . ipv6_addr . inet_service
+        flags timeout
+    }
+
+    set threaded_services {
+        type inet_proto . ipv4_addr . ipv4_addr . inet_service
+        flags timeout
+    }
+
+    set threaded_services6 {
+        type inet_proto . ipv6_addr . ipv6_addr . inet_service
         flags timeout
     }
 
