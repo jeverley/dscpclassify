@@ -173,7 +173,7 @@ table inet dscpclassify {
         meta l4proto udp ct state != new th dport != { 80, 443 } th sport != { 80, 443 } jump dynamic_realtime
 
         ## Mark unclassified connections as non-dynamic Best Effort (CS0)
-        ct mark and $ct_dscp == 0 ct bytes > $unclassified_bytes ct mark set ct mark and $ct_unused or $ct_unclassified
+        ct mark and $ct_dscp == 0 ct bytes > $unclassified_bytes goto ct_set_cs0
     }
 
     chain detect_threading {
@@ -377,7 +377,7 @@ table inet dscpclassify {
 
     ## Set conntrack DSCP mark without modifying unused bits
     chain ct_set_cs0 {
-        ct mark set ct mark and $ct_unused or $cs0
+        ct mark set ct mark and $ct_unused or $cs0 or $ct_unclassified
     }
 
     chain ct_set_le {
