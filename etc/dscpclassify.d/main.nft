@@ -266,8 +266,8 @@ table inet dscpclassify {
     }
 
     chain dscp_set_le {
-        ip dscp set lephb
-        ip6 dscp set lephb
+        ip dscp set $lephb
+        ip6 dscp set $lephb
     }
 
     chain dscp_set_cs1 {
