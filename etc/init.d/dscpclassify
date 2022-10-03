@@ -281,10 +281,10 @@ create_post_include() {
 	config_foreach_reverse create_user_rule rule
 
 	config_get threaded_client_kbps globals threaded_client_kbps 10
-	echo "add rule inet dscpclassify threaded_client update @threaded_clients { meta l4proto . ip saddr . th sport timeout 5m limit rate over $threaded_client_kbps kbytes/second } ct mark set ct mark and \$ct_unused_dyn or \$cs1" >>"/tmp/etc/dscpclassify-post.include"
-	echo "add rule inet dscpclassify threaded_client update @threaded_clients6 { meta l4proto . ip6 saddr . th sport timeout 5m limit rate over $threaded_client_kbps kbytes/second } ct mark set ct mark and \$ct_unused_dyn or \$cs1" >>"/tmp/etc/dscpclassify-post.include"
-	echo "add rule inet dscpclassify threaded_client_response update @threaded_clients { meta l4proto . ip daddr . th dport timeout 5m limit rate over $threaded_client_kbps kbytes/second } ct mark set ct mark and \$ct_unused_dyn or \$cs1" >>"/tmp/etc/dscpclassify-post.include"
-	echo "add rule inet dscpclassify threaded_client_response update @threaded_clients6 { meta l4proto . ip6 saddr . th sport timeout 5m limit rate over $threaded_client_kbps kbytes/second } ct mark set ct mark and \$ct_unused_dyn or \$cs1" >>"/tmp/etc/dscpclassify-post.include"
+	echo "add rule inet dscpclassify threaded_client meter tcbulk { meta l4proto . ip saddr . th sport limit rate over $threaded_client_kbps kbytes/second } update @threaded_clients { meta l4proto . ip saddr . th sport timeout 5m } ct mark set ct mark and \$ct_unused_dyn or \$cs1" >>"/tmp/etc/dscpclassify-post.include"
+	echo "add rule inet dscpclassify threaded_client meter tcbulk6 { meta l4proto . ip6 saddr . th sport limit rate over $threaded_client_kbps kbytes/second } update @threaded_clients6 { meta l4proto . ip6 saddr . th sport timeout 5m } ct mark set ct mark and \$ct_unused_dyn or \$cs1" >>"/tmp/etc/dscpclassify-post.include"
+	echo "add rule inet dscpclassify threaded_client_response meter tcrbulk { meta l4proto . ip daddr . th dport limit rate over $threaded_client_kbps kbytes/second } update @threaded_clients { meta l4proto . ip daddr . th dport timeout 5m } ct mark set ct mark and \$ct_unused_dyn or \$cs1" >>"/tmp/etc/dscpclassify-post.include"
+	echo "add rule inet dscpclassify threaded_client_response meter tcrbulk6 { meta l4proto . ip6 daddr . th dport limit rate over $threaded_client_kbps kbytes/second } update @threaded_clients6 { meta l4proto . ip6 daddr . th dport timeout 5m } ct mark set ct mark and \$ct_unused_dyn or \$cs1" >>"/tmp/etc/dscpclassify-post.include"
 
 	config_get_bool wmm globals wmm 1
 	[ "$wmm" = 1 ] && {
