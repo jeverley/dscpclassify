@@ -1,8 +1,17 @@
 config global 'global'
 	option client_hints '1'
 	option threaded_client_kbps '10'
+	option threaded_client_class 'le'
 	option threaded_service_bytes '1000000'
+	option threaded_service_class 'af13'
+	option dynamic_realtime_class 'cs4'
 	option wmm '1'
+
+config set
+	option name 'xcloud'
+	option family 'ipv4'
+	option interval '1'
+	list element '13.104.0.0/14' # Western Europe
 
 config rule
 	option name 'DNS'
@@ -35,9 +44,10 @@ config rule
 config rule
 	option name 'Xbox Cloud Gaming'
 	option proto 'udp'
-	list dest_ip '13.104.0.0/14' # Western Europe
+	option dest_ip '@xcloud'
 	option dest_port '1000-1150'
 	option class 'af41'
+	option family 'ipv4'
 
 config rule
 	option name 'Teams voice'
