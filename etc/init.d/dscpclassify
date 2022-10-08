@@ -55,7 +55,7 @@ check_class() {
 }
 
 check_duration() {
-	echo "$1" | grep -q -E -e "^([1-9][0-9]*[smhd]){1,4}$"
+	echo "$1" | grep -q -E -e "^[[:digit:]]+[smhd]$" -e "^[[:digit:]]+[smhd][[:digit:]]+[smhd]$" -e "^[[:digit:]]+[smhd][[:digit:]]+[smhd][[:digit:]]+[smhd]$" -e "^[[:digit:]]+[smhd][[:digit:]]+[smhd][[:digit:]]+[smhd][[:digit:]]+[smhd]$"
 }
 
 check_family() {
@@ -67,7 +67,7 @@ check_family() {
 
 check_port() {
 	for i in $1; do
-		echo "$i" | grep -q -E -e "^[1-9][0-9]*(-[1-9][0-9]*)?$" || return 1
+		echo "$i" | grep -q -E -e "^[[:digit:]]+-[[:digit:]]+$" -e "^[[:digit:]]+$" || return 1
 	done
 }
 
@@ -82,19 +82,12 @@ check_port_proto() {
 
 sort_ip() {
 	for i in $1; do
-		echo "$i" | grep -q -E -e "^(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))(\/([0-9]|[12][0-9]|3[0-2]))?$" && {
-			ipv4="$ipv4 $i"
-			continue
-		}
-		echo "$i" | grep -q -E -e "^(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)$" && {
-			ipv6="$ipv6 $i"
-			continue
-		}
-		echo "$i" | grep -q -E -e "^@\w+$" && {
-			ipset="$ipset $i"
-			continue
-		}
-		return 1
+		case $i in
+		[0-9]*.[0-9]*.[0-9]*.*[0-9]) ipv4="$ipv4 $i" ;;
+		*:*:*) ipv6="$ipv6 $i" ;;
+		@*[a-zA-Z0-9]) ipset="$ipset $i" ;;
+		*) return 1 ;;
+		esac
 	done
 }
 
@@ -304,7 +297,7 @@ create_user_set() {
 	config_get timeout "$1" timeout
 	config_get type "$1" type
 
-	if [ -z "$family$type" ] || [ -n "$family" ] && [ -n "$type" ]; then
+	if [ -z "$famiy$type" ] || [ -n "$family" ] && [ -n "$type" ]; then
 		log warning "Sets must contain either a family or type option"
 		return 1
 	fi
@@ -334,7 +327,7 @@ create_user_set() {
 
 	[ "$constant" = 1 ] && flags="$flags constant"
 	[ "$interval" = 1 ] && flags="$flags interval"
-	[ -n "$flags" ] && flags="$(mklist "$flags")"
+	[ -n "$flags" ] && flags=$(mklist $flags)
 
 	post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${flags:+flags $flags;} }"
 	[ -n "$element" ] && post_include "add element inet dscpclassify $name { $(mklist "$element") }"
@@ -403,7 +396,7 @@ create_threaded_client_rule() {
 		return 1
 	}
 	config_get threaded_client_class globals threaded_client_class le
-	threaded_client_class="$(check_class "$threaded_client_class")" || {
+	threaded_client_class="$(check_class $threaded_client_class)" || {
 		log error "Global option threaded_client_class contains an invalid DSCP class"
 		return 1
 	}
@@ -424,7 +417,7 @@ create_threaded_service_rule() {
 		return 1
 	}
 	config_get threaded_service_class globals threaded_service_class af13
-	threaded_service_class="$(check_class "$threaded_service_class")" || {
+	threaded_service_class="$(check_class $threaded_service_class)" || {
 		log error "Global option threaded_service_class contains an invalid DSCP class"
 		return 1
 	}
@@ -462,7 +455,7 @@ create_unclassified_rule() {
 		log error "Global option threaded_service_bytes contains an invalid number"
 		return 1
 	}
-	config_get_uint unclassified_bytes globals unclassified_bytes $((5 * threaded_service_bytes)) || {
+	config_get_uint unclassified_bytes globals unclassified_bytes $((5 * $threaded_service_bytes)) || {
 		log error "Global option unclassified_bytes contains an invalid number"
 		return 1
 	}
@@ -509,7 +502,7 @@ setup() {
 	lan="$(fw4 -q zone lan)" || exit 0
 	wan="$(fw4 -q zone wan)" || exit 0
 	config_load dscpclassify || return 1
-
+	
 	create_pre_include || return 1
 	create_post_include || return 1
 	nft -f /etc/dscpclassify.d/main.nft || return 1
