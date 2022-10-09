@@ -154,7 +154,7 @@ table inet dscpclassify {
 
     chain dynamic_classify {
         # Ignore non TCP/UDP connections
-        meta l4proto != { tcp, udp } return
+        meta l4proto != { tcp, udp } goto ct_set_cs0
 
         ## Detect connection threading by counting connections opened within a time period
         ct packets 1 goto detect_threading
