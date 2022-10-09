@@ -304,7 +304,7 @@ create_user_set() {
 	config_get timeout "$1" timeout
 	config_get type "$1" type
 
-	if [ -z "$famiy$type" ] || [ -n "$family" ] && [ -n "$type" ]; then
+	if [ -z "$family$type" ] || [ -n "$family" ] && [ -n "$type" ]; then
 		log warning "Sets must contain either a family or type option"
 		return 1
 	fi
