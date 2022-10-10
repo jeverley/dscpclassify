@@ -1,6 +1,6 @@
 config global 'global'
 	option client_hints '1'
-	option threaded_client_kbps '10'
+	option threaded_client_bytes '10000'
 	option threaded_client_class 'le'
 	option threaded_service_bytes '1000000'
 	option threaded_service_class 'af13'

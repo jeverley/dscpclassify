@@ -396,10 +396,10 @@ create_client_hints_rule() {
 }
 
 create_threaded_client_rule() {
-	local threaded_client_class threaded_client_kbps
+	local threaded_client_class threaded_client_bytes
 
-	config_get_uint threaded_client_kbps globals threaded_client_kbps 10 || {
-		log error "Global option threaded_client_kbps contains an invalid number"
+	config_get_uint threaded_client_bytes globals threaded_client_bytes 10000 || {
+		log error "Global option threaded_client_bytes contains an invalid number"
 		return 1
 	}
 	config_get threaded_client_class globals threaded_client_class le
@@ -407,13 +407,12 @@ create_threaded_client_rule() {
 		log error "Global option threaded_client_class contains an invalid DSCP class"
 		return 1
 	}
-	[ "$threaded_client_class" = "le" ] && threaded_client_class="lephb"
 
-	post_include "add rule inet dscpclassify threaded_client meter tcbulk { meta l4proto . ip saddr . th sport limit rate over $threaded_client_kbps kbytes/second } update @threaded_clients { meta l4proto . ip saddr . th sport timeout 5m } ct mark set ct mark and \$ct_unused_dyn or \$$threaded_client_class"
-	post_include "add rule inet dscpclassify threaded_client meter tcbulk6 { meta l4proto . ip6 saddr . th sport limit rate over $threaded_client_kbps kbytes/second } update @threaded_clients6 { meta l4proto . ip6 saddr . th sport timeout 5m } ct mark set ct mark and \$ct_unused_dyn or \$$threaded_client_class"
+	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk { ip saddr . th sport . meta l4proto timeout 5m limit rate over $threaded_client_bytes bytes/hour } update @threaded_clients { ip saddr . th sport . meta l4proto timeout 5m } delete @dynamic_countdown { ct id } goto ct_set_$threaded_client_class"
+	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $threaded_client_bytes bytes/hour } update @threaded_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } delete @dynamic_countdown { ct id } goto ct_set_$threaded_client_class"
 
-	post_include "add rule inet dscpclassify threaded_client_response meter tcrbulk { meta l4proto . ip daddr . th dport limit rate over $threaded_client_kbps kbytes/second } update @threaded_clients { meta l4proto . ip daddr . th dport timeout 5m } ct mark set ct mark and \$ct_unused_dyn or \$$threaded_client_class"
-	post_include "add rule inet dscpclassify threaded_client_response meter tcrbulk6 { meta l4proto . ip6 daddr . th dport limit rate over $threaded_client_kbps kbytes/second } update @threaded_clients6 { meta l4proto . ip6 daddr . th dport timeout 5m } ct mark set ct mark and \$ct_unused_dyn or \$$threaded_client_class"
+	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk { ip daddr . th dport . meta l4proto timeout 5m limit rate over $threaded_client_bytes bytes/hour } update @threaded_clients { ip daddr . th dport . meta l4proto timeout 5m } delete @dynamic_countdown { ct id } goto ct_set_$threaded_client_class"
+	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $threaded_client_bytes bytes/hour } update @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } delete @dynamic_countdown { ct id } goto ct_set_$threaded_client_class"
 }
 
 create_threaded_service_rule() {
@@ -428,17 +427,16 @@ create_threaded_service_rule() {
 		log error "Global option threaded_service_class contains an invalid DSCP class"
 		return 1
 	}
-	[ "$threaded_client_class" = "le" ] && threaded_client_class="lephb"
 
 	post_include "add rule inet dscpclassify threaded_service ct bytes < $threaded_service_bytes return"
-	post_include "add rule inet dscpclassify threaded_service ct mark set ct mark and \$ct_unused_dyn or \$$threaded_service_class"
-	post_include "add rule inet dscpclassify threaded_service update @threaded_services { meta l4proto . ip saddr . ip daddr and 255.255.255.0 . th dport timeout 60s }"
-	post_include "add rule inet dscpclassify threaded_service update @threaded_services6 { meta l4proto . ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport timeout 60s }"
+	post_include "add rule inet dscpclassify threaded_service update @threaded_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"
+	post_include "add rule inet dscpclassify threaded_service update @threaded_services6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }"
+	post_include "add rule inet dscpclassify threaded_service delete @dynamic_countdown { ct id } goto ct_set_$threaded_service_class"
 
-	post_include "add rule inet dscpclassify threaded_service_response ct bytes < $threaded_service_bytes return"
-	post_include "add rule inet dscpclassify threaded_service_response ct mark set ct mark and \$ct_unused_dyn or \$$threaded_service_class"
-	post_include "add rule inet dscpclassify threaded_service_response update @threaded_services { meta l4proto . ip daddr . ip saddr and 255.255.255.0 . th sport timeout 60s }"
-	post_include "add rule inet dscpclassify threaded_service_response update @threaded_services6 { meta l4proto . ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport timeout 60s }"
+	post_include "add rule inet dscpclassify threaded_service_reply ct bytes < $threaded_service_bytes return"
+	post_include "add rule inet dscpclassify threaded_service_reply update @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }"
+	post_include "add rule inet dscpclassify threaded_service_reply update @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }"
+	post_include "add rule inet dscpclassify threaded_service_reply delete @dynamic_countdown { ct id } goto ct_set_$threaded_service_class"
 }
 
 create_dynamic_realtime_rule() {
@@ -453,21 +451,6 @@ create_dynamic_realtime_rule() {
 
 	post_include "add rule inet dscpclassify dynamic_realtime ct avgpkt 0-450 ct mark set ct mark and \$ct_unused_dyn or \$$dynamic_realtime_class return"
 	post_include "add rule inet dscpclassify dynamic_realtime ct mark set ct mark and \$ct_unused_dyn or \$cs0"
-}
-
-create_unclassified_rule() {
-	local threaded_service_bytes unclassified_bytes
-
-	config_get_uint threaded_service_bytes globals threaded_service_bytes 1000000 || {
-		log error "Global option threaded_service_bytes contains an invalid number"
-		return 1
-	}
-	config_get_uint unclassified_bytes globals unclassified_bytes $((5 * threaded_service_bytes)) || {
-		log error "Global option unclassified_bytes contains an invalid number"
-		return 1
-	}
-
-	post_include "add rule inet dscpclassify dynamic_classify ct mark and \$ct_dscp == 0 ct bytes > $unclassified_bytes goto ct_set_cs0"
 }
 
 create_dscp_mark_rule() {
@@ -498,7 +481,6 @@ create_post_include() {
 	create_threaded_client_rule || return 1
 	create_threaded_service_rule || return 1
 	create_dynamic_realtime_rule || return 1
-	create_unclassified_rule || return 1
 
 	create_dscp_mark_rule || return 1
 }
