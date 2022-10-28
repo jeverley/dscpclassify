@@ -171,11 +171,7 @@ table inet dscpclassify {
         ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto @threaded_services goto threaded_service
         ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto @threaded_services6 goto threaded_service
 
-        ## Assess UDP connections for real-time classification
-        udp dport != { 80, 443 } jump dynamic_realtime
-
-        ## A connection's dynamic classification is fixed after it expires from the countdown set
-        ct id != @dynamic_countdown ct mark set ct mark and $ct_unused_dscp or $ct_static
+        ## Dynamic rules are added here by the init script
     }
 
     chain dynamic_classify_reply {
@@ -190,33 +186,17 @@ table inet dscpclassify {
         ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto @threaded_services goto threaded_service_reply
         ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto @threaded_services6 goto threaded_service_reply
 
-        ## Assess UDP connections for real-time classification
-        udp sport != { 80, 443 } jump dynamic_realtime
-
-        ## A connection's dynamic classification is fixed after it expires from the countdown set
-        ct id != @dynamic_countdown ct mark set ct mark and $ct_unused_dscp or $ct_static
+        ## Dynamic rules are added here by the init script
     }
 
     chain established_connection {
-        ## Remember new connections for 60s
-        add @dynamic_countdown { ct id timeout 1m }
-
         ## Detect multiple connections being opened from a single source port (i.e. P2P)
-        meter tc_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over 10/minute } add @threaded_clients { ip daddr . th dport . meta l4proto timeout 5s }
-        meter tc_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over 10/minute } add @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 5s }
+        meter tc_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over 10/minute } add @threaded_clients { ip daddr . th dport . meta l4proto timeout 30s }
+        meter tc_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over 10/minute } add @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }
 
         ## Detect multiple connections being opened to a service from a single source address
         meter ts_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over 2/minute } add @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }
         meter ts_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over 2/minute } add @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }
-    }
-
-    chain dynamic_realtime {
-        ## High-throughput connections exceeding 200pps are classified as Best Effort (CS0)
-        ct direction original meter ht_orig_detect { ct id limit rate over 200/second burst 100 packets } update @high_throughput { ct id timeout 1m } ct mark set ct mark and $ct_unused_dyn or $cs0 return
-        ct direction reply meter ht_reply_detect { ct id limit rate over 200/second burst 100 packets } update @high_throughput { ct id timeout 1m } ct mark set ct mark and $ct_unused_dyn or $cs0 return
-        ct id @high_throughput return
-
-        ## Dynamic real-time rules are added here by the init script
     }
 
     chain threaded_client {
@@ -257,11 +237,6 @@ table inet dscpclassify {
     }
 
     set high_throughput {
-        typeof ct id
-        flags timeout
-    }
-
-    set dynamic_countdown {
         typeof ct id
         flags timeout
     }
