@@ -444,49 +444,6 @@ create_threaded_service_rule() {
 	post_include "add rule inet dscpclassify threaded_service_reply goto ct_set_$class_high_throughput"
 }
 
-create_dynamic_rule() {
-	local class_video_conference class_realtime realtime_max_avgpkt realtime_max_pps realtime_min_pps
-
-	config_get class_video_conference global class_video_conference af41
-	class_realtime="$(check_class "$class_video_conference" var)" || {
-		log error "Global option class_video_conference contains an invalid DSCP class"
-		return 1
-	}
-	config_get class_realtime global class_realtime cs4
-	class_realtime="$(check_class "$class_realtime" var)" || {
-		log error "Global option class_realtime contains an invalid DSCP class"
-		return 1
-	}
-	config_get_uint realtime_max_avgpkt global realtime_max_avgpkt 450 || {
-		log error "Global option realtime_max_avgpkt contains an invalid number"
-		return 1
-	}
-	config_get_uint realtime_max_pps global realtime_max_pps 100 || {
-		log error "Global option realtime_max_pps contains an invalid number"
-		return 1
-	}
-	config_get_uint realtime_min_pps global realtime_min_pps 20 || {
-		log error "Global option realtime_min_pps contains an invalid number"
-		return 1
-	}
-
-	post_include "add rule inet dscpclassify dynamic_classify th dport { 80, 443 } return"
-	post_include "add rule inet dscpclassify dynamic_classify meter ht_orig_pps { ct id limit rate over $realtime_max_pps/second burst $realtime_max_pps packets } update @high_throughput { ct id timeout 30s } ct mark set ct mark and \$ct_unused_dyn or \$cs0 return"
-	post_include "add rule inet dscpclassify dynamic_classify ct id @high_throughput return"
-	post_include "add rule inet dscpclassify dynamic_classify meter rt_orig_pps { ct id limit rate $realtime_min_pps/second burst $realtime_min_pps packets } return"
-	post_include "add rule inet dscpclassify dynamic_classify ct original avgpkt > $realtime_max_avgpkt ct mark set ct mark and \$ct_unused_dyn or \$$class_video_conference return"
-	post_include "add rule inet dscpclassify dynamic_classify ct reply avgpkt > $realtime_max_avgpkt ct mark set ct mark and \$ct_unused_dyn or \$$class_video_conference return"
-	post_include "add rule inet dscpclassify dynamic_classify ct mark set ct mark and \$ct_unused_dyn or \$$class_realtime"
-
-	post_include "add rule inet dscpclassify dynamic_classify_reply th sport { 80, 443 } return"
-	post_include "add rule inet dscpclassify dynamic_classify_reply meter ht_reply_pps { ct id limit rate over $realtime_max_pps/second burst $realtime_max_pps packets } update @high_throughput { ct id timeout 30s } ct mark set ct mark and \$ct_unused_dyn or \$cs0 return"
-	post_include "add rule inet dscpclassify dynamic_classify_reply ct id @high_throughput return"
-	post_include "add rule inet dscpclassify dynamic_classify_reply meter rt_reply_pps { ct id limit rate $realtime_min_pps/second burst $realtime_min_pps packets } return"
-	post_include "add rule inet dscpclassify dynamic_classify_reply ct original avgpkt > $realtime_max_avgpkt ct mark set ct mark and \$ct_unused_dyn or \$$class_video_conference return"
-	post_include "add rule inet dscpclassify dynamic_classify_reply ct reply avgpkt > $realtime_max_avgpkt ct mark set ct mark and \$ct_unused_dyn or \$$class_video_conference return"
-	post_include "add rule inet dscpclassify dynamic_classify_reply ct mark set ct mark and \$ct_unused_dyn or \$$class_realtime"
-}
-
 create_dscp_mark_rule() {
 	local wmm
 
@@ -517,7 +474,6 @@ create_post_include() {
 
 	create_threaded_client_rule || return 1
 	create_threaded_service_rule || return 1
-	create_dynamic_rule || return 1
 
 	create_dscp_mark_rule || return 1
 }

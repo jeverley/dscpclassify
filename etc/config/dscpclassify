@@ -1,14 +1,9 @@
 config global 'global'
 	option class_bulk 'le'
 	option class_high_throughput 'af13'
-	option class_video_conference 'af41'
-	option class_realtime 'cs4'
 	option client_hints '1'
 	option threaded_client_min_bytes '10000'
 	option threaded_service_min_bytes '1000000'
-	option realtime_max_avgpkt '450'
-	option realtime_max_pps '100'
-	option realtime_min_pps '20'
 	option wmm '1'
 
 config set
