@@ -1,10 +1,9 @@
 config global 'global'
+	option class_bulk 'le'
+	option class_high_throughput 'af13'
 	option client_hints '1'
-	option threaded_client_kbps '10'
-	option threaded_client_class 'le'
-	option threaded_service_bytes '1000000'
-	option threaded_service_class 'af13'
-	option dynamic_realtime_class 'cs4'
+	option threaded_client_min_bytes '10000'
+	option threaded_service_min_bytes '1000000'
 	option wmm '1'
 
 config set
