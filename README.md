@@ -22,10 +22,9 @@ Connections that do not match a pre-specified rule will be dynamically classifie
   * These connections are classified as Low Effort (LE) by default and therefore prioritised below Best Effort traffic when using the layer-cake qdisc.
 * Multi-connection service detection for identifying high-throughput downloads from services such as Steam/Windows Update
   * These connections are classified as High-Throughput (AF13) by default and therefore have a higher drop probability than regular traffic in the Best Effort layer-cake tin.
-* Increased priority for small packet streams such as VoIP/game traffic.
-  * These connections are classified as Real-Time (CS4) by default and are processed by layer-cake in the Voice tin.
-* Increased priority for larger packet streams such as video conference traffic.
-  * These connections are classified as Conference Video (AF41) by default and are processed by layer-cake in the Video tin.
+* Increased priority for real-time streams such as VoIP/game traffic.
+  * Small packet connections are classified as Real-Time (CS4) by default and are processed by layer-cake in the Voice tin.
+  * Larger packet connections are classified as Conference Video (AF41) by default and are processed by layer-cake in the Video tin.
 
 ### External classification
 The service will respect DSCP classification stored by an external service in a connection's conntrack bits, this could include services such as netifyd.
@@ -72,15 +71,16 @@ A working default configuration is provided with the service.
 
 |  Config option | Description  | Type  | Default  |
 |---|---|---|---|
-| client_hints | Adopt the DSCP class supplied by a non-WAN client (this exludes CS6 and CS7 classes to avoid abuse) | boolean | 1 |
 | class_bulk | The class applied to threaded bulk clients | string | le |
 | class_high_throughput | The class applied to threaded high-throughput services | string | af13 |
 | class_realtime | The class applied to dynamic real-time connections | string | cs4 |
 | class_video_conference | The class applied to video conference connections | string | af41 |
+| client_hints | Adopt the DSCP class supplied by a non-WAN client (this exludes CS6 and CS7 classes to avoid abuse) | boolean | 1 |
 | threaded_client_min_bytes | The total bytes before a threaded client port (i.e. P2P) is classified as bulk | uint | 10000 |
 | threaded_service_min_bytes | The total bytes before a threaded service's connection is classed as high-throughput | uint | 1000000 |
-| realtime_max_pps | The maximum packets per second for dynamic realtime connections | uint | 100 |
-| realtime_max_avgpkt | The maximum average packet size in bytes for dynamic realtime connections | uint | 450 |
+| realtime_max_avgpkt | The maximum average packet size in bytes (directional) for dynamic realtime connections | uint | 450 |
+| realtime_max_pps | The maximum packets per second (directional) for dynamic realtime connections | uint | 100 |
+| realtime_min_pps | The minimum packets per second (directional) for dynamic realtime connections | uint | 20 |
 | wmm | When enabled the service will mark LAN bound packets with DSCP values respective of WMM (RFC-8325) | boolean |  1 |
 
 **Below is an example user rule:**
