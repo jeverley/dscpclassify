@@ -21,7 +21,7 @@ Connections that do not match a pre-specified rule will be dynamically classifie
 * Multi-threaded client port detection for detecting P2P traffic
   * These connections are classified as Low Effort (LE) by default and therefore prioritised below Best Effort traffic when using the layer-cake qdisc.
 * Multi-connection service detection for identifying high-throughput downloads from services such as Steam/Windows Update
-  * These connections are classified as High-Throughput (AF13) by default and therefore have a higher drop probability than regular traffic in the Best Effort layer-cake tin.
+  * These connections are classified as High-Throughput (AF13) by default and therefore prioritised amongst Best Effort traffic when using the layer-cake qdisc.
 
 ### External classification
 The service will respect DSCP classification stored by an external service in a connection's conntrack bits, this could include services such as netifyd.
