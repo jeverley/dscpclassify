@@ -43,7 +43,10 @@ check_class() {
 	local class
 
 	class="$(echo "$1" | tr 'A-Z' 'a-z')"
-	[ "$class" = "be" ] && class="cs0"
+
+	case "$class" in
+	be | df) class="cs0" ;;
+	esac
 
 	if [ "$2" = "var" ] && [ "$class" = "le" ]; then
 		echo "lephb"
@@ -91,7 +94,7 @@ sort_ip() {
 			ipv4="$ipv4 $i"
 			continue
 		}
-		echo "$i" | grep -q -E -e "^(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)$" && {
+		echo "$i" | grep -q -E -e "^(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)(\/[0-9]{1,3})?$" && {
 			ipv6="$ipv6 $i"
 			continue
 		}
@@ -287,6 +290,11 @@ comment() {
 	comment="comment \"$1\""
 }
 
+counter() {
+	[ "$1" = 1 ] || return 0
+	counter="counter"
+}
+
 pre_include() {
 	echo "$1" >>"/tmp/etc/dscpclassify-pre.include"
 }
@@ -326,7 +334,7 @@ create_user_set() {
 		return 1
 	}
 	case $name in
-	high_throughput | threaded_clients | threaded_clients6 | threaded_services | threaded_services6)
+	threaded_clients | threaded_clients6 | threaded_services | threaded_services6)
 		log warning "Config sets cannot overwrite built-in dscpclassify sets"
 		return 1
 		;;
@@ -346,7 +354,7 @@ create_user_set() {
 }
 
 create_user_rule() {
-	local enabled family proto direction device dest dest_ip dest_port src src_ip src_port class name
+	local enabled family proto direction device dest dest_ip dest_port src src_ip src_port counter class name
 	local nfproto l4proto oifname daddr daddr6 dport iifname saddr saddr6 sport verdict comment
 
 	config_get_bool enabled "$1" enabled
@@ -362,6 +370,7 @@ create_user_rule() {
 	config_get src "$1" src
 	config_get src_ip "$1" src_ip
 	config_get src_port "$1" src_port
+	config_get_bool counter "$1" counter
 	config_get class "$1" class
 	config_get name "$1" name
 
@@ -374,18 +383,19 @@ create_user_rule() {
 	saddr "$src_ip" "$family" || return 1
 	sport "$src_port" "$proto" || return 1
 	device "$device" "$direction" || return 1
+	counter "$counter" || return 1
 	verdict "$class" || return 1
 	comment "$name" || return 1
 
 	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $dport $iifname $sport $verdict $comment"
+		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $dport $iifname $sport $counter $verdict $comment"
 		return 0
 	}
 	[ -n "$daddr$saddr" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport $verdict $comment"
+		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport $counter $verdict $comment"
 	}
 	[ -n "$daddr6$saddr6" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport $verdict $comment"
+		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport $counter $verdict $comment"
 	}
 	return 0
 }
