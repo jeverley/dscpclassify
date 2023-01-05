@@ -1,8 +1,8 @@
-# dscpclassify
+# DSCP classify
 An nftables based service for applying DSCP classifications to connections, compatible with OpenWrt's firewall4 for dynamically setting DSCP packet marks (this only works in OpenWrt 22.03 and above).
 
 This should be used in conjunction with layer-cake SQM queue with ctinfo configured to restore DSCP on the device ingress.
-The nft-dscpclassify rules use the last 8 bits of the conntrack mark (0x000000ff).
+The dscpclassify service uses the last 8 bits of the conntrack mark (0x000000ff).
 
 ## Classification modes
 The service supports three modes for classifying and DSCP marking connections.
@@ -10,13 +10,14 @@ The service supports three modes for classifying and DSCP marking connections.
 ### User rules
 The service will first attempt to classify new connections using rules specified by the user in the config file.<br />
 These follow a similar syntax to the OpenWrt firewall config and can match upon source/destination ports and IPs, firewall zones etc.<br />
+The rules support the use of nft sets, which could be dynamically updated from external sources such as dsnmasq. <br />
 
 ### Client DSCP hinting
 The service can be configured to apply the DSCP mark supplied by a non WAN originating client.<br />
 This function ignores CS6 and CS7 classes to avoid abuse from inappropriately configed LAN clients such as IoT devices.
 
 ### Dynamic classification
-Connections that do not match a pre-specified rule will be dynamically classified by the service via three mechanisms:
+Connections that do not match a pre-specified rule will be dynamically classified by the service via two mechanisms:
 
 * Multi-threaded client port detection for detecting P2P traffic
   * These connections are classified as Low Effort (LE) by default and therefore prioritised below Best Effort traffic when using the layer-cake qdisc.
@@ -102,10 +103,12 @@ The **'layer_cake_ct.qos'** queue setup script must be selected for your wan dev
 
 | Config parameter | Value |
 | ----------- | ----------- |
-| qdisc_advanced | '1' |
-| squash_dscp | '0' |
-| squash_ingress | '0' |
-| qdisc_really_really_advanced | '1' |
-| iqdisc_opts | 'nat dual-dsthost ingress diffserv4' |
-| eqdisc_opts | 'nat dual-srchost ack-filter diffserv4' |
-| script | 'layer_cake_ct.qos'
+| qdisc_advanced | 1 |
+| **squash_dscp** | 0 |
+| **squash_ingress** | 0 |
+| qdisc_really_really_advanced | 1 |
+| iqdisc_opts | nat dual-dsthost ingress diffserv4 |
+| eqdisc_opts | nat dual-srchost ack-filter diffserv4 |
+| **script** | layer_cake_ct.qos |
+
+It is important that squash DSCP and squash ingress are not enabled in SQM setup otherwise cake will ignore the service's DSCP classes.
