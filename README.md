@@ -92,10 +92,12 @@ The OpenWrt firewall syntax is outlined here https://openwrt.org/docs/guide-user
 
 ## SQM configuration
 
-The **'layer_cake_ct.qos'** queue setup script must be selected for your wan device in SQM setup:
+The **'layer_cake_ct.qos'** queue setup script must be selected for your wan device in SQM setup,
+
+It is important that **Squash DSCP** and **Ignore DSCP** on ingress are **not enabled** in SQM setup otherwise cake will ignore the service's DSCP classes.
 
 ![image](https://user-images.githubusercontent.com/46714706/190709086-c2e820ed-11ed-4be4-8e57-fba4ab6db190.png)
-
+![image](https://user-images.githubusercontent.com/46714706/210797512-a2419605-5bd4-469b-8c99-2d881c2c8706.png)
 
 <br />
 
@@ -110,5 +112,3 @@ The **'layer_cake_ct.qos'** queue setup script must be selected for your wan dev
 | iqdisc_opts | nat dual-dsthost ingress diffserv4 |
 | eqdisc_opts | nat dual-srchost ack-filter diffserv4 |
 | **script** | layer_cake_ct.qos |
-
-It is important that squash DSCP and squash ingress are not enabled in SQM setup otherwise cake will ignore the service's DSCP classes.
