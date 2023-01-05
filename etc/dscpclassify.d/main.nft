@@ -236,11 +236,6 @@ table inet dscpclassify {
         flags timeout
     }
 
-    set high_throughput {
-        typeof ct id
-        flags timeout
-    }
-
     ## IP version agnostic DSCP set chains
     chain dscp_set_cs0 {
         ip dscp set cs0
