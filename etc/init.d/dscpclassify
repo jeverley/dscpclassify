@@ -312,7 +312,7 @@ create_user_set() {
 	local constant comment entry element enabled interval family flags match maxelem name timeout type
 	
 	config_get_bool enabled "$1" enabled 1
-	[ "$enabled" != 1 ] || return 0
+	[ "$enabled" = 1 ] || return 0
 
 	config_get comment "$1" comment
 	config_get name "$1" name
@@ -370,7 +370,7 @@ create_user_rule() {
 	local nfproto l4proto oifname daddr daddr6 dport iifname saddr saddr6 sport verdict comment
 
 	config_get_bool enabled "$1" enabled 1
-	[ "$enabled" != 1 ] || return 0
+	[ "$enabled" = 1 ] || return 0
 
 	config_get family "$1" family
 	config_get proto "$1" proto
