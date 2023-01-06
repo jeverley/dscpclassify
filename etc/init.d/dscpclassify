@@ -491,7 +491,8 @@ create_post_include() {
 
 	create_client_hints_rule || return 1
 
-	config_foreach create_user_set set
+	config_foreach create_user_set set # depreciating in favour of 'ipset' section name for consistency with fw4
+	config_foreach create_user_set ipset # section name consistent with fw4
 	config_foreach_reverse create_user_rule rule
 
 	create_threaded_client_rule || return 1
