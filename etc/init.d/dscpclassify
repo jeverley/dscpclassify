@@ -1,4 +1,5 @@
 #!/bin/sh /etc/rc.common
+# shellcheck disable=SC3043,SC3003,SC2019,SC2018
 
 START=20
 USE_PROCD=1
@@ -46,21 +47,14 @@ check_class() {
 	class="$(echo "$1" | tr 'A-Z' 'a-z')"
 
 	case "$class" in
+	le) [ "$2" = "var" ] && class="lephb" ;;
 	be | df) class="cs0" ;;
+	cs0 | cs1 | af11 | af12 | af13 | cs2 | af21 | af22 | af23 | cs3 | af31 | af32 | af33 | cs4 | af41 | af42 | af43 | cs5 | va | ef | cs6 | cs7) true ;;
+	*) return 1 ;;
 	esac
 
-	if [ "$2" = "var" ] && [ "$class" = "le" ]; then
-		echo "lephb"
-		return 0
-	fi
-
-	case "$class" in
-	cs0 | le | cs1 | af11 | af12 | af13 | cs2 | af21 | af22 | af23 | cs3 | af31 | af32 | af33 | cs4 | af41 | af42 | af43 | cs5 | va | ef | cs6 | cs7)
-		echo "$class"
-		return 0
-		;;
-	esac
-	return 1
+	echo "$class"
+	return 0
 }
 
 check_duration() {
@@ -74,16 +68,6 @@ check_family() {
 	return 1
 }
 
-check_port() {
-	for i in $1; do
-		echo "$i" | grep -q -E -e "^!?[1-9][0-9]*(-[1-9][0-9]*)?$" || return 1
-		case $i in
-		"!"*) port_negate="$port_negate ${i#*!}" ;;
-		*) port="$port $i" ;;
-		esac
-	done
-}
-
 check_port_proto() {
 	for i in $1; do
 		case $i in
@@ -93,7 +77,17 @@ check_port_proto() {
 	done
 }
 
-check_ip() {
+sort_ports() {
+	for i in $1; do
+		echo "$i" | grep -q -E -e "^!?[1-9][0-9]*(-[1-9][0-9]*)?$" || return 1
+		case $i in
+		"!"*) port_negate="$port_negate ${i#*!}" ;;
+		*) port="$port $i" ;;
+		esac
+	done
+}
+
+sport_ips() {
 	for i in $1; do
 		echo "$i" | grep -q -E -e "^!?(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))(\/([0-9]|[12][0-9]|3[0-2]))?$" && {
 			case $i in
@@ -173,14 +167,14 @@ port() {
 	src) xport="sport" ;;
 	dest) xport="dport" ;;
 	*)
-		log warning "Invalid direction for port function"
+		log err "Invalid direction for port function"
 		return 1
 		;;
 	esac
 
 	[ -n "$2" ] || return 0
 
-	check_port "$2" || {
+	sort_ports "$2" || {
 		log warning "Rule contains an invalid $1_port"
 		return 1
 	}
@@ -191,8 +185,8 @@ port() {
 
 	[ -n "$port" ] && rule="th $xport { $(mklist "$port") }"
 	[ -n "$port_negate" ] && rule="$rule th $xport != { $(mklist "$port_negate") }"
-	eval "$xport"='$rule'
 
+	eval "$xport"='$rule'
 	return 0
 }
 
@@ -205,7 +199,7 @@ addr() {
 	src) xaddr="saddr" ;;
 	dest) xaddr="daddr" ;;
 	*)
-		log warning "Invalid direction for addr function"
+		log err "Invalid direction for addr function"
 		return 1
 		;;
 	esac
@@ -216,7 +210,7 @@ addr() {
 		log warning "Rule contains an invalid family"
 		return 1
 	fi
-	check_ip "$2" || {
+	sport_ips "$2" || {
 		log warning "Rule contains an invalid $1_ip"
 		return 1
 	}
@@ -232,7 +226,7 @@ addr() {
 		log warning "Rules cannot combine an ipv6 $1_ip with the 'ipv4' family option"
 		return 1
 	fi
-	if [ "$(echo $ipset | wc -w)" -gt 1 ] || [ "$(echo $ipset_negate | wc -w)" -gt 1 ]; then
+	if [ "$(echo "$ipset" | wc -w)" -gt 1 ] || [ "$(echo "$ipset_negate" | wc -w)" -gt 1 ]; then
 		log warning "Rules must not contain more than one set for the $1_ip option"
 		return 1
 	fi
@@ -315,17 +309,22 @@ post_include() {
 }
 
 create_user_set() {
-	local constant element enabled interval family flags name timeout type
+	local constant comment entry element enabled interval family flags match maxelem name timeout type
 
 	config_get_bool enabled "$1" enabled
 	[ "$enabled" = 0 ] && return 0
 
-	config_get_bool constant "$1" constant
-	config_get element "$1" element
-	config_get_bool interval "$1" interval
-	config_get family "$1" family
+	config_get comment "$1" comment
 	config_get name "$1" name
+	config_get family "$1" family ipv4
+	config_get match "$1" match     # fw4 'type' equivalent, not implemented
+	config_get maxelem "$1" maxelem # not implemented
 	config_get timeout "$1" timeout
+	config_get entry "$1" entry # fw4 'element' equivalent
+
+	config_get element "$1" element # Depreciate for naming consistency with fw4 (entry)
+	config_get_bool constant "$1" constant
+	config_get_bool interval "$1" interval
 	config_get type "$1" type
 
 	if [ -z "$family$type" ] || [ -n "$family" ] && [ -n "$type" ]; then
@@ -361,7 +360,7 @@ create_user_set() {
 	[ -n "$flags" ] && flags="$(mklist "$flags")"
 
 	post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${flags:+flags $flags;} ${interval:+auto-merge;} }"
-	[ -n "$element" ] && post_include "add element inet dscpclassify $name { $(mklist "$element") }"
+	[ -n "$entry$element" ] && post_include "add element inet dscpclassify $name { $(mklist "$entry $element") }"
 }
 
 create_user_rule() {
