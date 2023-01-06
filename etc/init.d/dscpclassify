@@ -31,7 +31,8 @@ config_get_uint() {
 		err=1
 		uint=""
 	fi
-	eval "$1"="$uint"
+
+	eval "$1"='$uint'
 	return "$err"
 }
 
@@ -75,7 +76,11 @@ check_family() {
 
 check_port() {
 	for i in $1; do
-		echo "$i" | grep -q -E -e "^[1-9][0-9]*(-[1-9][0-9]*)?$" || return 1
+		echo "$i" | grep -q -E -e "^!?[1-9][0-9]*(-[1-9][0-9]*)?$" || return 1
+		case $i in
+		"!"*) port_negate="$port_negate ${i#*!}" ;;
+		*) port="$port $i" ;;
+		esac
 	done
 }
 
@@ -88,18 +93,29 @@ check_port_proto() {
 	done
 }
 
-sort_ip() {
+check_ip() {
 	for i in $1; do
-		echo "$i" | grep -q -E -e "^(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))(\/([0-9]|[12][0-9]|3[0-2]))?$" && {
-			ipv4="$ipv4 $i"
+		echo "$i" | grep -q -E -e "^!?(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))(\/([0-9]|[12][0-9]|3[0-2]))?$" && {
+			case $i in
+			"!"*) ipv4_negate="$ipv4_negate ${i#*!}" ;;
+			*) ipv4="$ipv4 $i" ;;
+			esac
 			continue
 		}
-		echo "$i" | grep -q -E -e "^(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)(\/[0-9]{1,3})?$" && {
-			ipv6="$ipv6 $i"
+
+		echo "$i" | grep -q -E -e "^!?(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)(\/[0-9]{1,3})?$" && {
+			case $i in
+			"!"*) ipv6_negate="$ipv6_negate ${i#*!}" ;;
+			*) ipv6="$ipv6 $i" ;;
+			esac
 			continue
 		}
-		echo "$i" | grep -q -E -e "^@\w+$" && {
-			ipset="$ipset $i"
+
+		echo "$i" | grep -q -E -e "^!?@\w+$" && {
+			case $i in
+			"!"*) ipset_negate="$ipset_negate ${i#*!}" ;;
+			*) ipset="$ipset $i" ;;
+			esac
 			continue
 		}
 		return 1
@@ -150,106 +166,101 @@ iifzone() {
 	iifname "$device"
 }
 
-dport() {
-	[ -n "$1" ] || return 0
+port() {
+	local port port_negate rule xport
 
-	check_port "$1" || {
-		log warning "Rule contains an invalid port"
+	case $1 in
+	src) xport="sport" ;;
+	dest) xport="dport" ;;
+	*)
+		log warning "Invalid direction for port function"
+		return 1
+		;;
+	esac
+
+	[ -n "$2" ] || return 0
+
+	check_port "$2" || {
+		log warning "Rule contains an invalid $1_port"
 		return 1
 	}
-	check_port_proto "$2" || {
-		log warning "Rules cannot combine a dest_port with protocols other than 'tcp' or 'udp'"
+	check_port_proto "$3" || {
+		log warning "Rules cannot combine a $1_port with protocols other than 'tcp' or 'udp'"
 		return 1
 	}
 
-	dport="th dport { $(mklist "$1") }"
+	[ -n "$port" ] && rule="th $xport { $(mklist "$port") }"
+	[ -n "$port_negate" ] && rule="$rule th $xport != { $(mklist "$port_negate") }"
+	eval "$xport"='$rule'
+
+	return 0
 }
 
-sport() {
-	[ -n "$1" ] || return 0
-
-	check_port "$1" || {
-		log warning "Rule contains an invalid port"
-		return 1
-	}
-	check_port_proto "$2" || {
-		log warning "Rules cannot combine a src_port with protocols other than 'tcp' or 'udp'"
-		return 1
-	}
-
-	sport="th sport { $(mklist "$1") }"
-}
-
-daddr() {
+addr() {
+	local rule rule6 xaddr
 	local ipv4 ipv6 ipset
+	local ipv4_negate ipv6_negate ipset_negate
 
-	[ -n "$1" ] || return 0
+	case $1 in
+	src) xaddr="saddr" ;;
+	dest) xaddr="daddr" ;;
+	*)
+		log warning "Invalid direction for addr function"
+		return 1
+		;;
+	esac
 
-	if [ -n "$2" ] && ! check_family "$2"; then
+	[ -n "$2" ] || return 0
+
+	if [ -n "$3" ] && ! check_family "$3"; then
 		log warning "Rule contains an invalid family"
 		return 1
 	fi
-	sort_ip "$1" || {
-		log warning "Rule contains an invalid dest_ip"
+	check_ip "$2" || {
+		log warning "Rule contains an invalid $1_ip"
 		return 1
 	}
-	if [ -n "$ipset" ] && [ -n "$ipv4$ipv6" ]; then
-		log warning "Rules should not mix IP addresses and sets in the dest_ip option"
+	if [ -n "$ipset$ipset_negate" ] && [ -n "$ipv4$ipv6$ipv4_negate$ipv6_negate" ]; then
+		log warning "Rules must not mix IP addresses and sets in the $1_ip option"
 		return 1
 	fi
-	if [ -n "$ipv4" ] && [ "$2" = "ipv6" ]; then
-		log warning "Rules cannot combine an ipv4 dest_ip with the 'ipv6' family option"
+	if [ -n "$ipv4$ipv4_negate" ] && [ "$3" = "ipv6" ]; then
+		log warning "Rules cannot combine an ipv4 $1_ip with the 'ipv6' family option"
 		return 1
 	fi
-	if [ -n "$ipv6" ] && [ "$2" = "ipv4" ]; then
-		log warning "Rules cannot combine an ipv6 dest_ip with the 'ipv4' family option"
+	if [ -n "$ipv6$ipv6_negate" ] && [ "$3" = "ipv4" ]; then
+		log warning "Rules cannot combine an ipv6 $1_ip with the 'ipv4' family option"
+		return 1
+	fi
+	if [ "$(echo $ipset | wc -w)" -gt 1 ] || [ "$(echo $ipset_negate | wc -w)" -gt 1 ]; then
+		log warning "Rules must not contain more than one set for the $1_ip option"
 		return 1
 	fi
 
-	[ -n "$ipv4" ] && daddr="ip daddr { $(mklist "$ipv4") }"
-	[ -n "$ipv6" ] && daddr6="ip6 daddr { $(mklist "$ipv6") }"
+	[ -n "$ipv4" ] && rule="ip $xaddr { $(mklist "$ipv4") }"
+	[ -n "$ipv6" ] && rule6="ip6 $xaddr { $(mklist "$ipv6") }"
 
-	[ -n "$ipset" ] || return 0
-	case $2 in
-	ipv4) daddr="ip daddr $ipset" ;;
-	ipv6) daddr6="ip6 daddr $ipset" ;;
+	[ -n "$ipv4_negate" ] && rule="$rule ip $xaddr != { $(mklist "$ipv4_negate") }"
+	[ -n "$ipv6_negate" ] && rule6="$rule6 ip6 $xaddr != { $(mklist "$ipv6_negate") }"
+
+	[ -n "$ipset$ipset_negate" ] && case $3 in
+	ipv4)
+		[ -n "$ipset" ] && rule="$rule ip $xaddr $ipset"
+		[ -n "$ipset_negate" ] && rule="$rule ip $xaddr != $ipset_negate"
+		;;
+	ipv6)
+		[ -n "$ipset" ] && rule6="$rule6 ip6 $xaddr $ipset"
+		[ -n "$ipset_negate" ] && rule6="$rule6 ip6 $xaddr != $ipset_negate"
+		;;
+	*)
+		log warning "Rules must contain the family option when a set is present in the $1_ip option"
+		return 1
+		;;
 	esac
-}
 
-saddr() {
-	local ipv4 ipv6 ipset
-
-	[ -n "$1" ] || return 0
-
-	if [ -n "$2" ] && ! check_family "$2"; then
-		log warning "Rule contains an invalid family"
-		return 1
-	fi
-	sort_ip "$1" || {
-		log warning "Rule contains an invalid src_ip"
-		return 1
-	}
-	if [ -n "$ipset" ] && [ -n "$ipv4$ipv6" ]; then
-		log warning "Rules should not mix IP addresses and sets in the src_ip option"
-		return 1
-	fi
-	if [ -n "$ipv4" ] && [ "$2" = "ipv6" ]; then
-		log warning "Rules cannot combine an ipv4 src_ip with the 'ipv6' family option"
-		return 1
-	fi
-	if [ -n "$ipv6" ] && [ "$2" = "ipv4" ]; then
-		log warning "Rules cannot combine an ipv6 src_ip with the 'ipv4' family option"
-		return 1
-	fi
-
-	[ -n "$ipv4" ] && daddr="ip saddr { $(mklist "$ipv4") }"
-	[ -n "$ipv6" ] && daddr6="ip6 saddr { $(mklist "$ipv6") }"
-
-	[ -n "$ipset" ] || return 0
-	case $2 in
-	ipv4) daddr="ip saddr $ipset" ;;
-	ipv6) daddr6="ip6 saddr $ipset" ;;
-	esac
+	eval "$xaddr"='$rule'
+	eval "$xaddr"6='$rule6'
+	return 0
 }
 
 device() {
@@ -346,10 +357,10 @@ create_user_set() {
 	fi
 
 	[ "$constant" = 1 ] && flags="$flags constant"
-	[ "$interval" = 1 ] && flags="$flags interval"
+	[ "$interval" = 1 ] && flags="$flags interval" || interval=""
 	[ -n "$flags" ] && flags="$(mklist "$flags")"
 
-	post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${flags:+flags $flags;} }"
+	post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${flags:+flags $flags;} ${interval:+auto-merge;} }"
 	[ -n "$element" ] && post_include "add element inet dscpclassify $name { $(mklist "$element") }"
 }
 
@@ -377,11 +388,11 @@ create_user_rule() {
 	nfproto "$family" || return 1
 	l4proto "$proto" || return 1
 	oifzone "$dest" || return 1
-	daddr "$dest_ip" "$family" || return 1
-	dport "$dest_port" "$proto" || return 1
+	addr dest "$dest_ip" "$family" || return 1
+	port dest "$dest_port" "$proto" || return 1
 	iifzone "$src" || return 1
-	saddr "$src_ip" "$family" || return 1
-	sport "$src_port" "$proto" || return 1
+	addr src "$src_ip" "$family" || return 1
+	port src "$src_port" "$proto" || return 1
 	device "$device" "$direction" || return 1
 	counter "$counter" || return 1
 	verdict "$class" || return 1
