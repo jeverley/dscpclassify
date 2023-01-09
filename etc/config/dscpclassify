@@ -91,24 +91,36 @@ config rule
 	option class 'af41'
 
 config rule
-	option name 'Teams voice'
+	option name 'Microsoft Teams voice'
 	option proto 'udp'
 	option src_port '50000-50019'
 	option dest_port '3478-3481'
+	list dest_ip '13.107.64.0/18'
+	list dest_ip '52.112.0.0/14'
+	list dest_ip '52.122.0.0/15'
+	list dest_ip '2603:1063::/39'
 	option class 'ef'
 
 config rule
-	option name 'Teams video'
+	option name 'Microsoft Teams video'
 	option proto 'udp'
 	option src_port '50020-50039'
 	option dest_port '3478-3481'
+	list dest_ip '13.107.64.0/18'
+	list dest_ip '52.112.0.0/14'
+	list dest_ip '52.122.0.0/15'
+	list dest_ip '2603:1063::/39'
 	option class 'af41'
 
 config rule
-	option name 'Teams sharing'
+	option name 'Microsoft Teams sharing'
 	option proto 'udp'
 	option src_port '50040-50059'
 	option dest_port '3478-3481'
+	list dest_ip '13.107.64.0/18'
+	list dest_ip '52.112.0.0/14'
+	list dest_ip '52.122.0.0/15'
+	list dest_ip '2603:1063::/39'
 	option class 'af21'
 
 config rule
