@@ -1,4 +1,4 @@
-# DSCP classify
+# DSCP Classify
 An nftables based service for applying DSCP classifications to connections, compatible with OpenWrt's firewall4 for dynamically setting DSCP packet marks (this only works in OpenWrt 22.03 and above).
 
 This should be used in conjunction with layer-cake SQM queue with ctinfo configured to restore DSCP on the device ingress.
@@ -19,10 +19,10 @@ This function ignores CS6 and CS7 classes to avoid abuse from inappropriately co
 ### Dynamic classification
 Connections that do not match a pre-specified rule will be dynamically classified by the service via two mechanisms:
 
-* Multi-threaded client port detection for detecting P2P traffic
+* Multi-connection client port detection for detecting P2P traffic
   * These connections are classified as Low Effort (LE) by default and therefore prioritised below Best Effort traffic when using the layer-cake qdisc.
-* Multi-connection service detection for identifying high-throughput downloads from services such as Steam/Windows Update
-  * These connections are classified as High-Throughput (AF13) by default and therefore prioritised amongst Best Effort traffic when using the layer-cake qdisc.
+* Multi-threaded service detection for identifying high-throughput downloads from services such as Steam/Windows Update
+  * These connections are classified as High-Throughput (AF13) by default and therefore prioritised amongst Best Effort traffic when using the layer-cake diffserv3/4 qdiscs.
 
 ### External classification
 The service will respect DSCP classification stored by an external service in a connection's conntrack bits, this could include services such as netifyd.
@@ -87,8 +87,11 @@ config rule
 	list dest_port '853'
 	list dest_port '5353'
 	option class 'cs5'
+	option counter '0'
 ```
 The OpenWrt firewall syntax is outlined here https://openwrt.org/docs/guide-user/firewall/firewall_configuration
+
+The counter option can be enabled to count the number of matched connections for a rule.
 
 ## SQM configuration
 
@@ -106,8 +109,8 @@ It is important that **Squash DSCP** and **Ignore DSCP** on ingress are **not en
 | Config parameter | Value |
 | ----------- | ----------- |
 | qdisc_advanced | 1 |
-| **squash_dscp** | 0 |
-| **squash_ingress** | 0 |
+| **squash_dscp** | 0, to ensure cake does not remove ingress packet DSCP values|
+| **squash_ingress** | 0, to ensure cake looks at packet marks on ingress |
 | qdisc_really_really_advanced | 1 |
 | iqdisc_opts | nat dual-dsthost ingress diffserv4 |
 | eqdisc_opts | nat dual-srchost ack-filter diffserv4 |
