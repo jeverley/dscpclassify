@@ -65,6 +65,7 @@ check_family() {
 	case $1 in
 	ipv4 | ipv6) return 0 ;;
 	esac
+
 	return 1
 }
 
@@ -77,7 +78,33 @@ check_port_proto() {
 	done
 }
 
-sort_ports() {
+check_set_name() {
+	case "$1" in
+	"")
+		log warning "Set is missing the name option"
+		return 1
+		;;
+	threaded_clients | threaded_clients6 | threaded_services | threaded_services6)
+		log warning "Sets cannot overwrite built-in dscpclassify sets"
+		return 1
+		;;
+	esac
+
+	return 0
+}
+
+check_set_size() {
+	[ -n "$size" ] || return 0
+
+	if ! [ "$uint" -eq "$uint" ] 2>/dev/null || [ "$uint" -lt 1 ] || [ "$uint" -gt 65536 ]; then
+		log warning "Set contains an invalid maxelem option"
+		return 1
+	fi
+
+	return 0
+}
+
+parse_rule_ports() {
 	for i in $1; do
 		echo "$i" | grep -q -E -e "^!?[1-9][0-9]*(-[1-9][0-9]*)?$" || return 1
 		case $i in
@@ -87,7 +114,7 @@ sort_ports() {
 	done
 }
 
-sort_ips() {
+parse_rule_ips() {
 	for i in $1; do
 		echo "$i" | grep -q -E -e "^!?(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))(\/([0-9]|[12][0-9]|3[0-2]))?$" && {
 			case $i in
@@ -116,27 +143,102 @@ sort_ips() {
 	done
 }
 
-l4proto() {
+parse_set_flags() {
+	[ "$flag_timeout" = 1 ] && {
+		flags="$flags timeout"
+	}
+
+	[ "$flag_constant" = 1 ] && {
+		flags="$flags constant"
+	}
+
+	[ "$flag_interval" = 1 ] && {
+		flags="$flags interval"
+		auto_merge=1
+	}
+
+	[ -n "$flags" ] && flags="$(mklist "$flags")"
+
+	return 0
+}
+
+parse_set_timeout() {
+	[ -n "$timeout" ] || return 0
+
+	[ "$timeout" = 0 ] && {
+		flag_timeout=1
+		timeout=""
+		return 0
+	}
+
+	if [ "$timeout" -eq "$timeout" ] 2>/dev/null && [ "$timeout" -gt 0 ]; then
+		timeout="${timeout}s"
+	fi
+
+	check_duration "$timeout" || {
+		log warning "Set contains an invalid timeout option"
+		return 1
+	}
+
+	return 0
+}
+
+parse_set_type() {
+	[ -n "$type" ] && return 0
+
+	[ -n "$match" ] || {
+		type="${family}_addr"
+		return 0
+	}
+
+	case "$match" in
+	src_* | dest_*) true ;;
+	*)
+		log warning "Set contains an invalid match option"
+		return 1
+		;;
+	esac
+
+	for i in $match; do
+		case $i in
+		*_ip) type="${type:+$type . }${family}_addr" ;;
+		*_mac) type="${type:+$type . }ether_addr" ;;
+		*_port) type="${type:+$type . }inet_service" ;;
+		*_net)
+			type="${type:+$type . }${family}_addr"
+			flag_interval=1
+			;;
+		*)
+			log warning "Set contains an invalid match option"
+			return 1
+			;;
+		esac
+	done
+
+	return 0
+}
+
+rule_l4proto() {
 	[ -n "$1" ] || return 0
 	l4proto="meta l4proto { $(mklist "$1") }"
 }
 
-nfproto() {
+rule_nfproto() {
 	[ -n "$1" ] || return 0
 	nfproto="meta nfproto { $(mklist "$1") }"
 }
 
-oifname() {
+rule_oifname() {
 	[ -n "$1" ] || return 0
 	oifname="oifname { $(mklist "$1") }"
 }
 
-iifname() {
+rule_iifname() {
 	[ -n "$1" ] || return 0
 	iifname="iifname { $(mklist "$1") }"
 }
 
-oifzone() {
+rule_oifzone() {
 	local device
 
 	[ -n "$1" ] || return 0
@@ -148,7 +250,7 @@ oifzone() {
 	oifname "$device"
 }
 
-iifzone() {
+rule_iifzone() {
 	local device
 
 	[ -n "$1" ] || return 0
@@ -160,7 +262,7 @@ iifzone() {
 	iifname "$device"
 }
 
-port() {
+rule_port() {
 	local port port_negate rule xport
 
 	case $1 in
@@ -174,7 +276,7 @@ port() {
 
 	[ -n "$2" ] || return 0
 
-	sort_ports "$2" || {
+	parse_rule_ports "$2" || {
 		log warning "Rule contains an invalid $1_port"
 		return 1
 	}
@@ -190,12 +292,12 @@ port() {
 	return 0
 }
 
-addr() {
+rule_addr() {
 	local rule rule6 xaddr
 	local ipv4 ipv6 ipset
 	local ipv4_negate ipv6_negate ipset_negate
 
-	case $1 in
+	case "$1" in
 	src) xaddr="saddr" ;;
 	dest) xaddr="daddr" ;;
 	*)
@@ -210,7 +312,7 @@ addr() {
 		log warning "Rule contains an invalid family"
 		return 1
 	fi
-	sort_ips "$2" || {
+	parse_rule_ips "$2" || {
 		log warning "Rule contains an invalid $1_ip"
 		return 1
 	}
@@ -257,7 +359,7 @@ addr() {
 	return 0
 }
 
-device() {
+rule_device() {
 	[ -n "$1$2" ] || return 0
 
 	if [ -z "$1" ] || [ -z "$2" ]; then
@@ -275,7 +377,7 @@ device() {
 	esac
 }
 
-verdict() {
+rule_verdict() {
 	local class
 
 	[ -n "$1" ] || {
@@ -290,16 +392,6 @@ verdict() {
 	verdict="goto ct_set_$class"
 }
 
-comment() {
-	[ -n "$1" ] || return 0
-	comment="comment \"$1\""
-}
-
-counter() {
-	[ "$1" = 1 ] || return 0
-	counter="counter"
-}
-
 pre_include() {
 	echo "$1" >>"/tmp/etc/dscpclassify-pre.include"
 }
@@ -309,60 +401,43 @@ post_include() {
 }
 
 create_user_set() {
-	local constant comment entry element enabled interval family flags match maxelem name timeout type
-	
+	local comment entry element enabled family flags match size name timeout type
+	local flag_constant flag_interval flag_timeout auto_merge
+
 	config_get_bool enabled "$1" enabled 1
 	[ "$enabled" = 1 ] || return 0
 
 	config_get comment "$1" comment
 	config_get name "$1" name
 	config_get family "$1" family ipv4
-	config_get match "$1" match     # fw4 'type' equivalent, not implemented
-	config_get maxelem "$1" maxelem # not implemented
+	config_get match "$1" match
+	config_get type "$1" type # allows user to explicity specify the nft set type
+	config_get size "$1" maxelem
 	config_get timeout "$1" timeout
-	config_get entry "$1" entry # fw4 'element' equivalent
 
-	config_get element "$1" element # Depreciate for naming consistency with fw4 (entry)
-	config_get_bool constant "$1" constant
-	config_get_bool interval "$1" interval
-	config_get type "$1" type
+	config_get_bool flag_constant "$1" constant
+	config_get_bool flag_interval "$1" interval
 
-	[ -n "$element" ] && log warning "The user set 'element' option is being depreciated in favour of 'entry'"
+	config_get entry "$1" entry
+	config_get element "$1" element # depreciate for naming consistency with fw4 (entry)
+	[ -n "$element" ] && log warning "The user set 'element' option is being depreciated in favour of 'entry' for consistency with fw4"
 
-	if [ -z "$family$type" ] || [ -n "$family" ] && [ -n "$type" ]; then
-		log warning "Sets must contain either a family or type option"
-		return 1
-	fi
-	[ -n "$family" ] && {
-		check_family "$family" || {
-			log warning "Set contains an invalid family"
-			return 1
-		}
-		type="${family}_addr"
-	}
-
-	[ -n "$name" ] || {
-		log warning "Set is missing the name option"
+	check_set_name "$name" || return 1
+	check_set_size "$size" || return 1
+	check_family "$family" || {
+		log warning "Set contains an invalid family"
 		return 1
 	}
-	case $name in
-	threaded_clients | threaded_clients6 | threaded_services | threaded_services6)
-		log warning "Config sets cannot overwrite built-in dscpclassify sets"
-		return 1
-		;;
-	esac
 
-	if [ -n "$timeout" ] && ! check_duration "$timeout"; then
-		log warning "Set contains an invalid timeout option"
-		return 1
-	fi
+	parse_set_type || return 1
+	parse_set_timeout || return 1
+	parse_set_flags || return 1
 
-	[ "$constant" = 1 ] && flags="$flags constant"
-	[ "$interval" = 1 ] && flags="$flags interval" || interval=""
-	[ -n "$flags" ] && flags="$(mklist "$flags")"
+	post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
 
-	post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${flags:+flags $flags;} ${interval:+auto-merge;} }"
 	[ -n "$entry$element" ] && post_include "add element inet dscpclassify $name { $(mklist "$entry $element") }"
+
+	return 0
 }
 
 create_user_rule() {
@@ -386,28 +461,26 @@ create_user_rule() {
 	config_get class "$1" class
 	config_get name "$1" name
 
-	nfproto "$family" || return 1
-	l4proto "$proto" || return 1
-	oifzone "$dest" || return 1
-	addr dest "$dest_ip" "$family" || return 1
-	port dest "$dest_port" "$proto" || return 1
-	iifzone "$src" || return 1
-	addr src "$src_ip" "$family" || return 1
-	port src "$src_port" "$proto" || return 1
-	device "$device" "$direction" || return 1
-	counter "$counter" || return 1
-	verdict "$class" || return 1
-	comment "$name" || return 1
+	rule_nfproto "$family" || return 1
+	rule_l4proto "$proto" || return 1
+	rule_oifzone "$dest" || return 1
+	rule_addr dest "$dest_ip" "$family" || return 1
+	rule_port dest "$dest_port" "$proto" || return 1
+	rule_iifzone "$src" || return 1
+	rule_addr src "$src_ip" "$family" || return 1
+	rule_port src "$src_port" "$proto" || return 1
+	rule_device "$device" "$direction" || return 1
+	rule_verdict "$class" || return 1
 
 	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $dport $iifname $sport $counter $verdict $comment"
+		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $dport $iifname $sport ${counter:+counter} $verdict ${comment:+comment \"$comment\"}"
 		return 0
 	}
 	[ -n "$daddr$saddr" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport $counter $verdict $comment"
+		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${comment:+comment \"$comment\"}"
 	}
 	[ -n "$daddr6$saddr6" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport $counter $verdict $comment"
+		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport ${counter:+counter} $verdict ${comment:+comment \"$comment\"}"
 	}
 	return 0
 }
@@ -491,7 +564,7 @@ create_post_include() {
 
 	create_client_hints_rule || return 1
 
-	config_foreach create_user_set set # depreciating in favour of 'ipset' section name for consistency with fw4
+	config_foreach create_user_set set   # depreciating in favour of 'ipset' section name for consistency with fw4
 	config_foreach create_user_set ipset # section name consistent with fw4
 	config_foreach_reverse create_user_rule rule
 
