@@ -96,7 +96,7 @@ check_set_name() {
 check_set_size() {
 	[ -n "$size" ] || return 0
 
-	if ! [ "$uint" -eq "$uint" ] 2>/dev/null || [ "$uint" -lt 1 ] || [ "$uint" -gt 65536 ]; then
+	if ! [ "$size" -eq "$size" ] 2>/dev/null || [ "$size" -lt 1 ] || [ "$size" -gt 65536 ]; then
 		log warning "Set contains an invalid maxelem option"
 		return 1
 	fi
