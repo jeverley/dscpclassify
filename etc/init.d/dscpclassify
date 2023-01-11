@@ -87,7 +87,7 @@ sort_ports() {
 	done
 }
 
-sport_ips() {
+sort_ips() {
 	for i in $1; do
 		echo "$i" | grep -q -E -e "^!?(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))(\/([0-9]|[12][0-9]|3[0-2]))?$" && {
 			case $i in
@@ -210,7 +210,7 @@ addr() {
 		log warning "Rule contains an invalid family"
 		return 1
 	fi
-	sport_ips "$2" || {
+	sort_ips "$2" || {
 		log warning "Rule contains an invalid $1_ip"
 		return 1
 	}
