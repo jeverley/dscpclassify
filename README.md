@@ -22,7 +22,9 @@ Connections that do not match a pre-specified rule will be dynamically classifie
 * Multi-connection client port detection for detecting P2P traffic
   * These connections are classified as Low Effort (LE) by default and therefore prioritised below Best Effort traffic when using the layer-cake qdisc.
 * Multi-threaded service detection for identifying high-throughput downloads from services such as Steam/Windows Update
-  * These connections are classified as High-Throughput (AF13) by default and therefore prioritised amongst Best Effort traffic when using the layer-cake diffserv3/4 qdiscs.
+  * These connections are classified as High-Throughput (AF13) by default and therefore prioritised as follows by cake:
+    * diffserv3/4: Equal to besteffort (CS0) traffic.
+    * diffserv8: Below besteffort (CS0) traffic, but above low effort (LE) traffic.
 
 ### External classification
 The service will respect DSCP classification stored by an external service in a connection's conntrack bits, this could include services such as netifyd.
@@ -34,15 +36,16 @@ The service will respect DSCP classification stored by an external service in a 
 To install the dscpclassify service via command line you can use the following:
 
 ```
+repo="https://raw.githubusercontent.com/jeverley/dscpclassify/main"
 mkdir -p "/etc/dscpclassify.d"
-[ -f "/etc/config/dscpclassify" ] && mv /etc/config/dscpclassify /etc/config/dscpclassify.bak
-rm -f /etc/dscpclassify.d/main.nft
-rm -f /etc/hotplug.d/iface/21-dscpclassify
-rm -f /etc/init.d/dscpclassify
-wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/etc/config/dscpclassify -P /etc/config
-wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/etc/dscpclassify.d/main.nft -P /etc/dscpclassify.d
-wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/etc/hotplug.d/iface/21-dscpclassify -P /etc/hotplug.d/iface
-wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/etc/init.d/dscpclassify -P /etc/init.d
+if [ ! -f "/etc/config/dscpclassify" ]; then
+    wget "$repo/etc/config/dscpclassify" -O "/etc/config/dscpclassify"
+else
+    wget "$repo/etc/config/dscpclassify" -O "/etc/config/dscpclassify_git"
+fi
+wget "$repo/etc/dscpclassify.d/main.nft" -O "/etc/dscpclassify.d/main.nft"
+wget "$repo/etc/hotplug.d/iface/21-dscpclassify" -O "/etc/hotplug.d/iface/21-dscpclassify"
+wget "$repo/etc/init.d/dscpclassify" -O "/etc/init.d/dscpclassify"
 chmod +x "/etc/init.d/dscpclassify"
 /etc/init.d/dscpclassify enable
 /etc/init.d/dscpclassify start
@@ -53,13 +56,13 @@ Ingress DSCP marking requires the SQM queue setup script 'layer_cake_ct.qos' and
 To install these via command line you can use the following:
 
 ```
+repo="https://raw.githubusercontent.com/jeverley/dscpclassify/main"
 opkg update
 opkg install kmod-sched-ctinfo
-rm -f /usr/lib/sqm/layer_cake_ct.qos
-rm -f /usr/lib/sqm/layer_cake_ct.qos.help
-wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/usr/lib/sqm/layer_cake_ct.qos -P /usr/lib/sqm
-wget https://raw.githubusercontent.com/jeverley/dscpclassify/main/usr/lib/sqm/layer_cake_ct.qos.help -P /usr/lib/sqm
+wget "$repo/usr/lib/sqm/layer_cake_ct.qos" -O "/usr/lib/sqm/layer_cake_ct.qos"
+wget "$repo/usr/lib/sqm/layer_cake_ct.qos.help" -O "/usr/lib/sqm/layer_cake_ct.qos.help"
 ```
+
 ## Service configuration
 The user rules in '/etc/config/dscpclassify' use the same syntax as OpenWrt's firewall config, the 'class' option is used to specified the desired DSCP.
 
