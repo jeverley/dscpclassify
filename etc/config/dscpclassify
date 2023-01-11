@@ -129,12 +129,12 @@ config rule
 	option class 'cs5'
 	option enabled '0'
 
-config rule
-	option name 'Game Consoles non-HTTP(S)'
+config rule # A rule which marks all non-HTTP UDP connections from a specific IP as cs4
+	option name 'Game Console non-HTTP'
 	option proto 'udp'
-	list src_ip '192.168.1.105'
-	list src_ip '192.168.1.23'
+	list src_ip '192.168.1.100'
 	list dest_port '!80'
 	list dest_port '!443'
 	option class 'cs4'
 	option counter '1'
+	option enabled '0'
