@@ -23,20 +23,6 @@ config_foreach_reverse() {
 	done
 }
 
-config_get_uint() {
-	local err uint
-
-	err=0
-	config_get uint "$2" "$3" "$4"
-	if [ -n "$uint" ] && { ! [ "$uint" -eq "$uint" ] 2>/dev/null || [ "$uint" -lt 0 ]; }; then
-		err=1
-		uint=""
-	fi
-
-	eval "$1"='$uint'
-	return "$err"
-}
-
 mklist() {
 	echo "$*" | tr '\n' ' ' | sed -e 's/^\s*//' -e 's/\s*$//' -e 's/\([^.]\)\s\+\([^.]\)/\1, \2/g'
 }
@@ -96,12 +82,17 @@ check_set_name() {
 check_set_size() {
 	[ -n "$size" ] || return 0
 
-	if ! [ "$size" -eq "$size" ] 2>/dev/null || [ "$size" -lt 1 ] || [ "$size" -gt 65536 ]; then
+	if ! [ "$size" -ge 1 ] 2>/dev/null || ! [ "$size" -le 65536 ] 2>/dev/null; then
 		log warning "Set contains an invalid maxelem option"
 		return 1
 	fi
 
 	return 0
+}
+
+check_uint() {
+	[ "$1" -ge 0 ] 2>/dev/null && return 0
+	return 1
 }
 
 parse_rule_ports() {
@@ -171,9 +162,9 @@ parse_set_timeout() {
 		return 0
 	}
 
-	if [ "$timeout" -eq "$timeout" ] 2>/dev/null && [ "$timeout" -gt 0 ]; then
+	check_uint "$timeout" && {
 		timeout="${timeout}s"
-	fi
+	}
 
 	check_duration "$timeout" || {
 		log warning "Set contains an invalid timeout option"
@@ -498,7 +489,8 @@ create_client_hints_rule() {
 create_threaded_client_rule() {
 	local class_bulk threaded_client_min_bytes
 
-	config_get_uint threaded_client_min_bytes global threaded_client_min_bytes 10000 || {
+	config_get threaded_client_min_bytes global threaded_client_min_bytes 10000
+	check_uint "$threaded_client_min_bytes" || {
 		log err "Global option threaded_client_min_bytes contains an invalid number"
 		return 1
 	}
@@ -518,7 +510,8 @@ create_threaded_client_rule() {
 create_threaded_service_rule() {
 	local class_high_throughput threaded_service_min_bytes
 
-	config_get_uint threaded_service_min_bytes global threaded_service_min_bytes 1000000 || {
+	config_get threaded_service_min_bytes global threaded_service_min_bytes 1000000
+	check_uint "$threaded_service_min_bytes" || {
 		log err "Global option threaded_service_min_bytes contains an invalid number"
 		return 1
 	}
