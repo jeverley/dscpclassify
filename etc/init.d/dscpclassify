@@ -80,9 +80,9 @@ check_set_name() {
 }
 
 check_set_size() {
-	[ -n "$size" ] || return 0
+	[ -n "$1" ] || return 0
 
-	if ! [ "$size" -ge 1 ] 2>/dev/null || ! [ "$size" -le 65535 ] 2>/dev/null; then
+	if ! [ "$1" -ge 1 ] 2>/dev/null || ! [ "$1" -le 65535 ] 2>/dev/null; then
 		log warning "Set contains an invalid maxelem option"
 		return 1
 	fi
@@ -182,15 +182,15 @@ parse_set_type() {
 		return 0
 	}
 
-	case "$match" in
-	src_* | dest_*) true ;;
-	*)
-		log warning "Set contains an invalid match option"
-		return 1
-		;;
-	esac
-
 	for i in $match; do
+		case "$i" in
+		src_* | dest_*) true ;;
+		*)
+			log warning "Set contains an invalid match option"
+			return 1
+			;;
+		esac
+
 		case "$i" in
 		*_ip) type="${type:+$type . }${family}_addr" ;;
 		*_mac) type="${type:+$type . }ether_addr" ;;
