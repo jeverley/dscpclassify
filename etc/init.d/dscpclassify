@@ -570,12 +570,15 @@ create_post_include() {
 setup() {
 	local lan wan
 
-	lan="$(fw4 -q zone lan)" || exit 0
-	wan="$(fw4 -q zone wan)" || exit 0
+	lan="$(fw4 -q zone lan | sort -u)"
+	wan="$(fw4 -q zone wan | sort -u)"
+	[ -n "$lan" ] || exit 0
+	[ -n "$wan" ] || exit 0
+	
 	config_load dscpclassify || return 1
-
 	create_pre_include || return 1
 	create_post_include || return 1
+	
 	nft -f "/etc/dscpclassify.d/main.nft" || return 1
 	rm -f "/tmp/etc/dscpclassify-pre.include"
 	rm -f "/tmp/etc/dscpclassify-post.include"
