@@ -1,0 +1,22 @@
+table inet dscpclassify {
+    ## Sets for stateful tracking
+    set threaded_clients {
+        type ipv4_addr . inet_service . inet_proto
+        flags timeout
+    }
+
+    set threaded_clients6 {
+        type ipv6_addr . inet_service . inet_proto
+        flags timeout
+    }
+
+    set threaded_services {
+        type ipv4_addr . ipv4_addr . inet_service . inet_proto
+        flags timeout
+    }
+
+    set threaded_services6 {
+        type ipv6_addr . ipv6_addr . inet_service . inet_proto
+        flags timeout
+    }
+}

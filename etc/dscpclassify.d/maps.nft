@@ -1,0 +1,91 @@
+table inet dscpclassify {
+    ## Conntrack mark to DSCP class vmap
+    map ct_dscp {
+        type mark : verdict
+        elements = {
+            $cs0 : goto dscp_set_cs0,
+            $lephb : goto dscp_set_le,
+            $cs1 : goto dscp_set_cs1,
+            $af11 : goto dscp_set_af11,
+            $af12 : goto dscp_set_af12,
+            $af13 : goto dscp_set_af13,
+            $cs2 : goto dscp_set_cs2,
+            $af21 : goto dscp_set_af21,
+            $af22 : goto dscp_set_af22,
+            $af23 : goto dscp_set_af23,
+            $cs3 : goto dscp_set_cs3,
+            $af31 : goto dscp_set_af31,
+            $af32 : goto dscp_set_af32,
+            $af33 : goto dscp_set_af33,
+            $cs4 : goto dscp_set_cs4,
+            $af41 : goto dscp_set_af41,
+            $af42 : goto dscp_set_af42,
+            $af43 : goto dscp_set_af43,
+            $cs5 : goto dscp_set_cs5,
+            $va : goto dscp_set_va,
+            $ef : goto dscp_set_ef,
+            $cs6 : goto dscp_set_cs6,
+            $cs7 : goto dscp_set_cs7,
+        }
+    }
+
+    ## Conntrack mark to WMM class vmap (RFC-8325)
+    map ct_wmm {
+        type mark : verdict
+        elements = {
+            $cs0 : goto dscp_set_cs0,   # WMM BE
+            $lephb : goto dscp_set_le,  # WMM BK
+            $cs1 : goto dscp_set_cs1,   # WMM BK
+            $af11 : goto dscp_set_cs0,  # WMM BE
+            $af12 : goto dscp_set_cs0,  # WMM BE
+            $af13 : goto dscp_set_cs0,  # WMM BE
+            $cs2 : goto dscp_set_cs0,   # WMM BE
+            $af21 : goto dscp_set_cs3,  # WMM BE
+            $af22 : goto dscp_set_cs3,  # WMM BE
+            $af23 : goto dscp_set_cs3,  # WMM BE
+            $cs3 : goto dscp_set_cs4,   # WMM VI
+            $af31 : goto dscp_set_cs4,  # WMM VI
+            $af32 : goto dscp_set_cs4,  # WMM VI
+            $af33 : goto dscp_set_cs4,  # WMM VI
+            $cs4 : goto dscp_set_cs4,   # WMM VI
+            $af41 : goto dscp_set_cs4,  # WMM VI
+            $af42 : goto dscp_set_cs4,  # WMM VI
+            $af43 : goto dscp_set_cs4,  # WMM VI
+            $cs5 : goto dscp_set_cs5,   # WMM VI
+            $va : goto dscp_set_cs6,    # WMM VO
+            $ef : goto dscp_set_cs6,    # WMM VO
+            $cs6 : goto dscp_set_cs7,   # WMM VO
+            $cs7 : goto dscp_set_cs7,   # WMM VO
+        }
+    }
+
+    ## DSCP class to conntrack mark vmap
+    map dscp_ct {
+        type dscp : verdict
+        elements = {
+            cs0 : goto ct_set_cs0,
+            $lephb : goto ct_set_le,
+            cs1 : goto ct_set_cs1,
+            af11 : goto ct_set_af11,
+            af12 : goto ct_set_af12,
+            af13 : goto ct_set_af13,
+            cs2 : goto ct_set_cs2,
+            af21 : goto ct_set_af21,
+            af22 : goto ct_set_af22,
+            af23 : goto ct_set_af23,
+            cs3 : goto ct_set_cs3,
+            af31 : goto ct_set_af31,
+            af32 : goto ct_set_af32,
+            af33 : goto ct_set_af33,
+            cs4 : goto ct_set_cs4,
+            af41 : goto ct_set_af41,
+            af42 : goto ct_set_af42,
+            af43 : goto ct_set_af43,
+            cs5 : goto ct_set_cs5,
+            $va : goto ct_set_va,
+            ef : goto ct_set_ef,
+            cs6 : goto ct_set_cs6,
+            cs7 : goto ct_set_cs7,
+        }
+    }
+}
