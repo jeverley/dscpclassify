@@ -3,6 +3,7 @@
 
 START=20
 USE_PROCD=1
+DEBUG=0
 
 log() {
 	logger -t dscpclassify -p "daemon.$1" "$2"
@@ -21,6 +22,16 @@ config_foreach_reverse() {
 	for config in $list; do
 		"$1" "$config" "$3"
 	done
+}
+
+fw_zone_dev() {
+	local dev
+
+	dev="$(fw4 -q zone "$1" | sort -u)"
+	[ -n "$dev" ] || return 1
+
+	echo "$dev"
+	return 0
 }
 
 mklist() {
@@ -234,7 +245,7 @@ rule_oifzone() {
 
 	[ -n "$1" ] || return 0
 
-	device="$(fw4 -q zone "$1")" || {
+	device="$(fw_zone_dev "$1")" || {
 		log warning "Rule contains an invalid dest zone"
 		return 1
 	}
@@ -246,7 +257,7 @@ rule_iifzone() {
 
 	[ -n "$1" ] || return 0
 
-	device="$(fw4 -q zone "$1")" || {
+	device="$(fw_zone_dev "$1")" || {
 		log warning "Rule contains an invalid src zone"
 		return 1
 	}
@@ -424,7 +435,9 @@ create_user_set() {
 	parse_set_timeout || return 1
 	parse_set_flags || return 1
 
-	post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
+	if ! nft -j list sets | jsonfilter -e '@.nftables[(@.set.table="dscpclassify" && @.set.name="'"$name"'")].set.name' >/dev/null; then
+		post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
+	fi
 
 	[ -n "$entry$element" ] && post_include "add element inet dscpclassify $name { $(mklist "$entry $element") }"
 
@@ -550,6 +563,12 @@ create_pre_include() {
 
 	pre_include "define lan = { $(mklist "$lan") }"
 	pre_include "define wan = { $(mklist "$wan") }"
+
+	[ "$action" = "start" ] && {
+		pre_include "include \"/etc/dscpclassify.d/sets.nft\""
+	}
+	pre_include "include \"/etc/dscpclassify.d/verdicts.nft\""
+	pre_include "include \"/etc/dscpclassify.d/maps.nft\""
 }
 
 create_post_include() {
@@ -567,18 +586,40 @@ create_post_include() {
 	create_dscp_mark_rule || return 1
 }
 
-setup() {
-	local lan wan
+delete_table() {
+	nft delete table inet dscpclassify 2>/dev/null
+}
 
-	lan="$(fw4 -q zone lan | sort -u)"
-	wan="$(fw4 -q zone wan | sort -u)"
-	[ -n "$lan" ] || exit 0
-	[ -n "$wan" ] || exit 0
-	
+flush_table() {
+	for i in $(nft -j list chains | jsonfilter -e '@.nftables[@.chain.table="dscpclassify"].chain.name'); do
+		nft flush chain inet dscpclassify "$i"
+	done
+	for i in $(nft -j list maps | jsonfilter -e '@.nftables[@.map.table="dscpclassify"].map.name'); do
+		nft flush map inet dscpclassify "$i"
+	done
+}
+
+setup() {
+	local action lan wan
+
+	action="$1"
+	lan="$(fw_zone_dev lan)" || exit 0
+	wan="$(fw_zone_dev wan)" || exit 0
+
 	config_load dscpclassify || return 1
+
+	case "$action" in
+	start) delete_table ;;
+	reload) flush_table ;;
+	*)
+		log err "Invalid setup action"
+		return 1
+		;;
+	esac
+
 	create_pre_include || return 1
 	create_post_include || return 1
-	
+
 	nft -f "/etc/dscpclassify.d/main.nft" || return 1
 	rm -f "/tmp/etc/dscpclassify-pre.include"
 	rm -f "/tmp/etc/dscpclassify-post.include"
@@ -587,25 +628,18 @@ setup() {
 }
 
 start_service() {
-	nft delete table inet dscpclassify 2>/dev/null
-
-	setup || {
+	setup start || {
 		log err "Service start failed"
+		[ "$DEBUG" = 1 ] || delete_table
 		return 1
 	}
 	log notice "Service started"
 }
 
 reload_service() {
-	for i in $(nft -j list chains | jsonfilter -e '@.nftables[@.chain.table="dscpclassify"].chain.name'); do
-		nft flush chain inet dscpclassify "$i"
-	done
-	for i in $(nft -j list maps | jsonfilter -e '@.nftables[@.map.table="dscpclassify"].map.name'); do
-		nft flush map inet dscpclassify "$i"
-	done
-
-	setup || {
+	setup reload || {
 		log err "Service reload failed"
+		[ "$DEBUG" = 1 ] || delete_table
 		return 1
 	}
 	log notice "Service reloaded"
