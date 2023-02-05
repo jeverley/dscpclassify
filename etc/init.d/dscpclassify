@@ -556,8 +556,6 @@ create_dscp_mark_rule() {
 }
 
 create_pre_include() {
-	rm -f "/tmp/etc/dscpclassify-pre.include"
-
 	config_get lan global lan "$lan"
 	config_get wan global wan "$wan"
 
@@ -572,8 +570,6 @@ create_pre_include() {
 }
 
 create_post_include() {
-	rm -f "/tmp/etc/dscpclassify-post.include"
-
 	create_client_hints_rule || return 1
 
 	config_foreach create_user_set set   # depreciating in favour of 'ipset' section name for consistency with fw4
@@ -588,6 +584,16 @@ create_post_include() {
 
 delete_table() {
 	nft delete table inet dscpclassify 2>/dev/null
+}
+
+delete_includes() {
+	rm -f "/tmp/etc/dscpclassify-pre.include"
+	rm -f "/tmp/etc/dscpclassify-post.include"
+}
+
+cleanup() {
+	delete_includes
+	delete_table
 }
 
 flush_table() {
@@ -617,12 +623,12 @@ setup() {
 		;;
 	esac
 
+	delete_includes
 	create_pre_include || return 1
 	create_post_include || return 1
 
 	nft -f "/etc/dscpclassify.d/main.nft" || return 1
-	rm -f "/tmp/etc/dscpclassify-pre.include"
-	rm -f "/tmp/etc/dscpclassify-post.include"
+	delete_includes
 
 	return 0
 }
@@ -630,7 +636,7 @@ setup() {
 start_service() {
 	setup start || {
 		log err "Service start failed"
-		[ "$DEBUG" = 1 ] || delete_table
+		[ "$DEBUG" = 1 ] || cleanup
 		return 1
 	}
 	log notice "Service started"
@@ -639,13 +645,13 @@ start_service() {
 reload_service() {
 	setup reload || {
 		log err "Service reload failed"
-		[ "$DEBUG" = 1 ] || delete_table
+		[ "$DEBUG" = 1 ] || cleanup
 		return 1
 	}
 	log notice "Service reloaded"
 }
 
 stop_service() {
-	nft delete table inet dscpclassify 2>/dev/null
+	delete_table
 	log notice "Service stopped"
 }
