@@ -652,6 +652,6 @@ reload_service() {
 }
 
 stop_service() {
-	delete_table
+	cleanup
 	log notice "Service stopped"
 }
