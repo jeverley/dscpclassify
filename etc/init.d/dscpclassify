@@ -500,32 +500,45 @@ create_client_hints_rule() {
 }
 
 create_threaded_client_rule() {
-	local class_bulk threaded_client_min_bytes
+	local class_bulk threaded_client_min_bytes threaded_client_min_connections
 
-	config_get threaded_client_min_bytes global threaded_client_min_bytes 10000
-	check_uint "$threaded_client_min_bytes" || {
-		log err "Global option threaded_client_min_bytes contains an invalid number"
+	config_get threaded_client_min_connections global threaded_client_min_connections 10
+	if ! check_uint "$threaded_client_min_connections" || [ "$threaded_client_min_connections" -lt 2 ]; then
+		log err "Global option threaded_client_min_connections contains an invalid value"
 		return 1
-	}
+	fi
+	config_get threaded_client_min_bytes global threaded_client_min_bytes 10000
+	if ! check_uint "$threaded_client_min_bytes" || [ "$threaded_client_min_bytes" = 0 ]; then
+		log err "Global option threaded_client_min_bytes contains an invalid value"
+		return 1
+	fi
 	config_get class_bulk global class_bulk le
 	class_bulk="$(check_class "$class_bulk")" || {
 		log err "Global option class_bulk contains an invalid DSCP class"
 		return 1
 	}
 
-	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk { ip saddr . th sport . meta l4proto timeout 5m limit rate over $threaded_client_min_bytes bytes/hour } update @threaded_clients { ip saddr . th sport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
-	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $threaded_client_min_bytes bytes/hour } update @threaded_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
+	post_include "add rule inet dscpclassify established_connection meter tc_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((threaded_client_min_connections - 1))/minute } add @threaded_clients { ip daddr . th dport . meta l4proto timeout 30s }"
+	post_include "add rule inet dscpclassify established_connection meter tc_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((threaded_client_min_connections - 1))/minute } add @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
 
-	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk { ip daddr . th dport . meta l4proto timeout 5m limit rate over $threaded_client_min_bytes bytes/hour } update @threaded_clients { ip daddr . th dport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
-	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $threaded_client_min_bytes bytes/hour } update @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
+	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients { ip saddr . th sport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
+	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
+
+	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients { ip daddr . th dport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
+	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
 }
 
 create_threaded_service_rule() {
-	local class_high_throughput threaded_service_min_bytes
+	local class_high_throughput threaded_service_min_bytes threaded_service_min_connections
 
+	config_get threaded_service_min_connections global threaded_service_min_connections 3
+	if ! check_uint "$threaded_service_min_connections" || [ "$threaded_service_min_connections" -lt 2 ]; then
+		log err "Global option threaded_service_min_connections contains an invalid value"
+		return 1
+	fi
 	config_get threaded_service_min_bytes global threaded_service_min_bytes 1000000
 	check_uint "$threaded_service_min_bytes" || {
-		log err "Global option threaded_service_min_bytes contains an invalid number"
+		log err "Global option threaded_service_min_bytes contains an invalid value"
 		return 1
 	}
 	config_get class_high_throughput global class_high_throughput af13
@@ -533,6 +546,9 @@ create_threaded_service_rule() {
 		log err "Global option class_high_throughput contains an invalid DSCP class"
 		return 1
 	}
+
+	post_include "add rule inet dscpclassify established_connection meter ts_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((threaded_service_min_connections - 1))/minute } add @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
+	post_include "add rule inet dscpclassify established_connection meter ts_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((threaded_service_min_connections - 1))/minute } add @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
 
 	post_include "add rule inet dscpclassify threaded_service ct original bytes < $threaded_service_min_bytes return"
 	post_include "add rule inet dscpclassify threaded_service update @threaded_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"

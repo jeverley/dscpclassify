@@ -100,13 +100,7 @@ table inet dscpclassify {
     }
 
     chain established_connection {
-        ## Detect multiple connections being opened from a single source port (i.e. P2P)
-        meter tc_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over 10/minute } add @threaded_clients { ip daddr . th dport . meta l4proto timeout 30s }
-        meter tc_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over 10/minute } add @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }
-
-        ## Detect multiple connections being opened to a service from a single source address
-        meter ts_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over 2/minute } add @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }
-        meter ts_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over 2/minute } add @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }
+        ## Threaded service and multi-connection client rules are added here by the init script
     }
 
     chain threaded_client {
