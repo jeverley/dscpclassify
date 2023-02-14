@@ -655,9 +655,9 @@ start_service() {
 }
 
 reload_service() {
-	service dscpclassify status 2>/dev/null || {
-		start_service
-		return $?
+	service dscpclassify status &>/dev/null || {
+		echo "The dscpclassify service does not appear to be loaded."
+		return 1
 	}
 
 	setup reload || {
