@@ -118,7 +118,7 @@ parse_rule_ports() {
 
 parse_rule_ips() {
 	for i in $1; do
-		echo "$i" | grep -q -E -e "^!?(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))(\/([0-9]|[12][0-9]|3[0-2]))?$" && {
+		echo "$i" | grep -q -E -e "^!?(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))(/([0-9]|[12][0-9]|3[0-2]))?$" && {
 			case "$i" in
 			"!"*) ipv4_negate="$ipv4_negate ${i#*!}" ;;
 			*) ipv4="$ipv4 $i" ;;
@@ -126,7 +126,7 @@ parse_rule_ips() {
 			continue
 		}
 
-		echo "$i" | grep -q -E -e "^!?(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)(\/[0-9]{1,3})?$" && {
+		echo "$i" | grep -q -E -e "^!?(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)(/[0-9]{1,3})?$" && {
 			case "$i" in
 			"!"*) ipv6_negate="$ipv6_negate ${i#*!}" ;;
 			*) ipv6="$ipv6 $i" ;;
@@ -567,6 +567,14 @@ create_dscp_mark_rule() {
 	post_include "add rule inet dscpclassify postrouting ct mark and \$ct_dscp vmap @ct_dscp"
 }
 
+create_include_path() {
+	if [ -p "/tmp/etc" ] || mkdir -p "/tmp/etc"; then
+		return 0
+	fi
+	log err "unable to create /tmp/etc path"
+	return 1
+}
+
 create_pre_include() {
 	config_get lan global lan "$lan"
 	config_get wan global wan "$wan"
@@ -594,13 +602,13 @@ create_post_include() {
 	create_dscp_mark_rule || return 1
 }
 
-delete_table() {
-	nft delete table inet dscpclassify 2>/dev/null
-}
-
 delete_includes() {
 	rm -f "/tmp/etc/dscpclassify-pre.include"
 	rm -f "/tmp/etc/dscpclassify-post.include"
+}
+
+delete_table() {
+	nft delete table inet dscpclassify 2>/dev/null
 }
 
 cleanup() {
@@ -634,8 +642,9 @@ setup() {
 		return 1
 		;;
 	esac
-
 	delete_includes
+
+	create_include_path || return 1
 	create_pre_include || return 1
 	create_post_include || return 1
 
