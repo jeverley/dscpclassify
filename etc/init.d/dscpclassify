@@ -442,7 +442,7 @@ create_user_set() {
 
 create_user_rule() {
 	local enabled family proto direction device dest dest_ip dest_port src src_ip src_port counter class name
-	local nfproto l4proto oifname daddr daddr6 dport iifname saddr saddr6 sport verdict comment
+	local nfproto l4proto oifname daddr daddr6 dport iifname saddr saddr6 sport verdict
 
 	config_get_bool enabled "$1" enabled 1
 	[ "$enabled" = 1 ] || return 0
@@ -473,14 +473,14 @@ create_user_rule() {
 	rule_verdict "$class" || return 1
 
 	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $dport $iifname $sport ${counter:+counter} $verdict ${comment:+comment \"$comment\"}"
+		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $dport $iifname $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 		return 0
 	}
 	[ -n "$daddr$saddr" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${comment:+comment \"$comment\"}"
+		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 	}
 	[ -n "$daddr6$saddr6" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport ${counter:+counter} $verdict ${comment:+comment \"$comment\"}"
+		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 	}
 	return 0
 }
