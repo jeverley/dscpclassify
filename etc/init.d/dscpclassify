@@ -431,9 +431,9 @@ create_user_set() {
 	parse_set_timeout || return 1
 	parse_set_flags || return 1
 
-	if ! nft -j list sets | jsonfilter -e '@.nftables[(@.set.table="dscpclassify" && @.set.name="'"$name"'")].set.name' >/dev/null; then
+	nft -j list sets | jsonfilter -e '@.nftables[(@.set.table="dscpclassify" && @.set.name="'"$name"'")].set.name' &>/dev/null || {
 		post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
-	fi
+	}
 
 	[ -n "$entry$element" ] && post_include "add element inet dscpclassify $name { $(mklist "$entry $element") }"
 
@@ -648,21 +648,21 @@ setup() {
 start_service() {
 	setup start || {
 		log err "Service start failed"
-		[ "$DEBUG" = 1 ] || cleanup
+		[ "$DEBUG" != 1 ] && cleanup
 		return 1
 	}
 	log notice "Service started"
 }
 
 reload_service() {
-	service dscpclassify status &>/dev/null || {
+	/etc/init.d/dscpclassify status &>/dev/null || {
 		echo "The dscpclassify service does not appear to be loaded."
 		return 1
 	}
 
 	setup reload || {
 		log err "Service reload failed"
-		[ "$DEBUG" = 1 ] || cleanup
+		[ "$DEBUG" != 1 ] && cleanup
 		return 1
 	}
 	log notice "Service reloaded"
