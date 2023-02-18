@@ -45,7 +45,6 @@ else
 fi
 wget "$repo/etc/dscpclassify.d/main.nft" -O "/etc/dscpclassify.d/main.nft"
 wget "$repo/etc/dscpclassify.d/maps.nft" -O "/etc/dscpclassify.d/maps.nft"
-wget "$repo/etc/dscpclassify.d/sets.nft" -O "/etc/dscpclassify.d/sets.nft"
 wget "$repo/etc/dscpclassify.d/verdicts.nft" -O "/etc/dscpclassify.d/verdicts.nft"
 wget "$repo/etc/hotplug.d/iface/21-dscpclassify" -O "/etc/hotplug.d/iface/21-dscpclassify"
 wget "$repo/etc/init.d/dscpclassify" -O "/etc/init.d/dscpclassify"
