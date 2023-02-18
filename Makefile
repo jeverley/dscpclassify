@@ -32,7 +32,6 @@ define Package/dscpclassify/install
 	$(INSTALL_CONF) ./etc/config/dscpclassify $(1)/etc/config/
 	$(INSTALL_CONF) ./etc/dscpclassify.d/main.nft $(1)/etc/dscpclassify.d/
 	$(INSTALL_CONF) ./etc/dscpclassify.d/maps.nft $(1)/etc/dscpclassify.d/
-	$(INSTALL_CONF) ./etc/dscpclassify.d/sets.nft $(1)/etc/dscpclassify.d/
 	$(INSTALL_CONF) ./etc/dscpclassify.d/verdicts.nft $(1)/etc/dscpclassify.d/
 	$(INSTALL_CONF) ./etc/hotplug.d/iface/21-dscpclassify $(1)/etc/hotplug.d/iface/
 	$(INSTALL_BIN) ./etc/init.d/dscpclassify $(1)/etc/init.d/

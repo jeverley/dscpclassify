@@ -9,6 +9,34 @@ log() {
 	logger -t dscpclassify -p "daemon.$1" "$2"
 }
 
+create_path() {
+	mkdir -p "$1" && return 0
+	log err "Unable to create '$1' path"
+	return 1
+}
+
+delete_includes() {
+	rm -f "/tmp/etc/dscpclassify-pre.include"
+	rm -f "/tmp/etc/dscpclassify-post.include"
+}
+
+delete_table() {
+	nft delete table inet dscpclassify 2>/dev/null
+}
+
+cleanup() {
+	delete_includes
+	delete_table
+}
+
+pre_include() {
+	echo "$1" >>"/tmp/etc/dscpclassify-pre.include"
+}
+
+post_include() {
+	echo "$1" >>"/tmp/etc/dscpclassify-post.include"
+}
+
 list_append() {
 	list="$list"$'\n'"$1"
 }
@@ -35,7 +63,8 @@ fw_zone_dev() {
 }
 
 mklist() {
-	echo "$*" | tr '\n' ' ' | sed -e 's/^\s*//' -e 's/\s*$//' -e 's/\([^.]\)\s\+\([^.]\)/\1, \2/g'
+	local delimiter="$2"
+	echo "$1" | tr '\n' ' ' | sed -e 's/^\s*//' -e 's/\s*$//' -e "s/\([^.]\)\s\+\([^.]\)/\1$delimiter\2/g"
 }
 
 check_class() {
@@ -56,6 +85,23 @@ check_class() {
 
 check_duration() {
 	echo "$1" | grep -q -E -e "^([1-9][0-9]*[smhd]){1,4}$"
+}
+
+convert_duration_to_seconds() {
+	local duration seconds
+
+	duration="$(echo "$1" | sed -e 's/\([dhms]\)/\1 /g')"
+	for i in $duration; do
+		case "$i" in
+		*d) seconds=$((seconds + ${i::-1} * 86400)) || return 1 ;;
+		*h) seconds=$((seconds + ${i::-1} * 3600)) || return 1 ;;
+		*m) seconds=$((seconds + ${i::-1} * 60)) || return 1 ;;
+		*s) seconds=$((seconds + ${i::-1})) || return 1 ;;
+		*) return 1 ;;
+		esac
+	done
+
+	echo "$seconds"
 }
 
 check_family() {
@@ -97,6 +143,41 @@ check_set_size() {
 		log warning "Set contains an invalid maxelem option"
 		return 1
 	fi
+
+	return 0
+}
+
+check_set_exists() {
+	nft -t list set inet dscpclassify "$1" &>/dev/null
+}
+
+check_set_against_existing() {
+	local name type comment size flags timeout
+	local existing_set existing_type
+
+	name="$1"
+	existing_set=$(nft -t -j list set inet dscpclassify "$name" 2>/dev/null) || return 2
+
+	type="$(echo "$2" | sed 's/ \+\. \+/ /g')"
+	existing_type="$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.type")"
+	if [ -n "$existing_type" ]; then
+		[ "$existing_type" = "$type" ] || return 1
+	else
+		existing_type="$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.type[*]" | tr '\n' ' ' | sed 's/ *$//')"
+		[ "$existing_type" = "$type" ] || return 1
+	fi
+
+	comment="$3"
+	[ "$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.comment")" = "$comment" ] || return 1
+
+	size="$4"
+	[ "$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.size")" = "$size" ] || return 1
+
+	flags="$(echo "$5" | sed 's/, \+/ /g')"
+	[ "$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.flags[*]" | tr '\n' ' ' | sed 's/ *$//')" = "$flags" ] || return 1
+
+	timeout="$(convert_duration_to_seconds "$6")"
+	[ "$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.timeout")" = "$timeout" ] || return 1
 
 	return 0
 }
@@ -145,25 +226,6 @@ parse_rule_ips() {
 	done
 }
 
-parse_set_flags() {
-	[ "$flag_timeout" = 1 ] && {
-		flags="$flags timeout"
-	}
-
-	[ "$flag_constant" = 1 ] && {
-		flags="$flags constant"
-	}
-
-	[ "$flag_interval" = 1 ] && {
-		flags="$flags interval"
-		auto_merge=1
-	}
-
-	[ -n "$flags" ] && flags="$(mklist "$flags")"
-
-	return 0
-}
-
 parse_set_timeout() {
 	[ -n "$timeout" ] || return 0
 
@@ -174,6 +236,7 @@ parse_set_timeout() {
 	}
 
 	check_uint "$timeout" && {
+		flag_timeout=1
 		timeout="${timeout}s"
 	}
 
@@ -181,6 +244,25 @@ parse_set_timeout() {
 		log warning "Set contains an invalid timeout option"
 		return 1
 	}
+
+	return 0
+}
+
+parse_set_flags() {
+	[ "$flag_constant" = 1 ] && {
+		flags="$flags constant"
+	}
+
+	[ "$flag_interval" = 1 ] && {
+		flags="$flags interval"
+		auto_merge=1
+	}
+
+	[ "$flag_timeout" = 1 ] && {
+		flags="$flags timeout"
+	}
+
+	[ -n "$flags" ] && flags="$(mklist "$flags" ", ")"
 
 	return 0
 }
@@ -193,6 +275,8 @@ parse_set_type() {
 		return 0
 	}
 
+	log warning "The match set option functionality is not yet fully implemented for user sets"
+
 	for i in $match; do
 		case "$i" in
 		src_* | dest_*) true ;;
@@ -203,11 +287,11 @@ parse_set_type() {
 		esac
 
 		case "$i" in
-		*_ip) type="${type:+$type . }${family}_addr" ;;
-		*_mac) type="${type:+$type . }ether_addr" ;;
-		*_port) type="${type:+$type . }inet_service" ;;
+		*_ip) type="$type ${family}_addr" ;;
+		*_mac) type="$type ether_addr" ;;
+		*_port) type="$type inet_service" ;;
 		*_net)
-			type="${type:+$type . }${family}_addr"
+			type="$type ${family}_addr"
 			flag_interval=1
 			;;
 		*)
@@ -216,28 +300,72 @@ parse_set_type() {
 			;;
 		esac
 	done
+	type=$(mklist "$type" " . ")
+
+	return 0
+}
+
+create_user_set() {
+	local comment entry element enabled family flags match size name timeout type
+	local flag_constant flag_interval flag_timeout auto_merge
+
+	config_get_bool enabled "$1" enabled 1
+	[ "$enabled" = 1 ] || return 0
+
+	config_get comment "$1" comment
+	config_get name "$1" name
+	config_get family "$1" family ipv4
+	config_get match "$1" match
+	config_get type "$1" type # allows user to explicity specify the nft set type
+	config_get size "$1" maxelem
+	config_get timeout "$1" timeout
+
+	config_get_bool flag_constant "$1" constant
+	config_get_bool flag_interval "$1" interval
+
+	config_get entry "$1" entry
+	config_get element "$1" element # depreciate for naming consistency with fw4 (entry)
+	[ -n "$element" ] && log warning "The user set 'element' option is being depreciated in favour of 'entry' for consistency with fw4"
+
+	check_set_name "$name" || return 1
+	check_set_size "$size" || return 1
+	check_family "$family" || {
+		log warning "Set contains an invalid family"
+		return 1
+	}
+
+	parse_set_type || return 1
+	parse_set_timeout || return 1
+	parse_set_flags || return 1
+
+	check_set_against_existing "$name" "$type" "$comment" "$size" "$flags" "$timeout" || {
+		[ "$?" = 1 ] && post_include "delete set inet dscpclassify $name"
+		post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
+	}
+
+	[ -n "$entry$element" ] && post_include "add element inet dscpclassify $name { $(mklist "$entry $element" ", ") }"
 
 	return 0
 }
 
 rule_l4proto() {
 	[ -n "$1" ] || return 0
-	l4proto="meta l4proto { $(mklist "$1") }"
+	l4proto="meta l4proto { $(mklist "$1" ", ") }"
 }
 
 rule_nfproto() {
 	[ -n "$1" ] || return 0
-	nfproto="meta nfproto { $(mklist "$1") }"
+	nfproto="meta nfproto { $(mklist "$1" ", ") }"
 }
 
 rule_oifname() {
 	[ -n "$1" ] || return 0
-	oifname="oifname { $(mklist "$1") }"
+	oifname="oifname { $(mklist "$1" ", ") }"
 }
 
 rule_iifname() {
 	[ -n "$1" ] || return 0
-	iifname="iifname { $(mklist "$1") }"
+	iifname="iifname { $(mklist "$1" ", ") }"
 }
 
 rule_zone() {
@@ -283,8 +411,8 @@ rule_port() {
 		return 1
 	}
 
-	[ -n "$port" ] && rule="th $xport { $(mklist "$port") }"
-	[ -n "$port_negate" ] && rule="$rule th $xport != { $(mklist "$port_negate") }"
+	[ -n "$port" ] && rule="th $xport { $(mklist "$port" ", ") }"
+	[ -n "$port_negate" ] && rule="$rule th $xport != { $(mklist "$port_negate" ", ") }"
 
 	eval "$xport"='$rule'
 	return 0
@@ -331,11 +459,11 @@ rule_addr() {
 		return 1
 	fi
 
-	[ -n "$ipv4" ] && rule="ip $xaddr { $(mklist "$ipv4") }"
-	[ -n "$ipv4_negate" ] && rule="$rule ip $xaddr != { $(mklist "$ipv4_negate") }"
+	[ -n "$ipv4" ] && rule="ip $xaddr { $(mklist "$ipv4" ", ") }"
+	[ -n "$ipv4_negate" ] && rule="$rule ip $xaddr != { $(mklist "$ipv4_negate" ", ") }"
 
-	[ -n "$ipv6" ] && rule6="ip6 $xaddr { $(mklist "$ipv6") }"
-	[ -n "$ipv6_negate" ] && rule6="$rule6 ip6 $xaddr != { $(mklist "$ipv6_negate") }"
+	[ -n "$ipv6" ] && rule6="ip6 $xaddr { $(mklist "$ipv6" ", ") }"
+	[ -n "$ipv6_negate" ] && rule6="$rule6 ip6 $xaddr != { $(mklist "$ipv6_negate" ", ") }"
 
 	[ -n "$ipset$ipset_negate" ] && case "$3" in
 	ipv4)
@@ -388,56 +516,6 @@ rule_verdict() {
 	}
 
 	verdict="goto ct_set_$class"
-}
-
-pre_include() {
-	echo "$1" >>"/tmp/etc/dscpclassify-pre.include"
-}
-
-post_include() {
-	echo "$1" >>"/tmp/etc/dscpclassify-post.include"
-}
-
-create_user_set() {
-	local comment entry element enabled family flags match size name timeout type
-	local flag_constant flag_interval flag_timeout auto_merge
-
-	config_get_bool enabled "$1" enabled 1
-	[ "$enabled" = 1 ] || return 0
-
-	config_get comment "$1" comment
-	config_get name "$1" name
-	config_get family "$1" family ipv4
-	config_get match "$1" match
-	config_get type "$1" type # allows user to explicity specify the nft set type
-	config_get size "$1" maxelem
-	config_get timeout "$1" timeout
-
-	config_get_bool flag_constant "$1" constant
-	config_get_bool flag_interval "$1" interval
-
-	config_get entry "$1" entry
-	config_get element "$1" element # depreciate for naming consistency with fw4 (entry)
-	[ -n "$element" ] && log warning "The user set 'element' option is being depreciated in favour of 'entry' for consistency with fw4"
-
-	check_set_name "$name" || return 1
-	check_set_size "$size" || return 1
-	check_family "$family" || {
-		log warning "Set contains an invalid family"
-		return 1
-	}
-
-	parse_set_type || return 1
-	parse_set_timeout || return 1
-	parse_set_flags || return 1
-
-	nft -j list sets | jsonfilter -e '@.nftables[(@.set.table="dscpclassify" && @.set.name="'"$name"'")].set.name' &>/dev/null || {
-		post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
-	}
-
-	[ -n "$entry$element" ] && post_include "add element inet dscpclassify $name { $(mklist "$entry $element") }"
-
-	return 0
 }
 
 create_user_rule() {
@@ -567,22 +645,18 @@ create_dscp_mark_rule() {
 	post_include "add rule inet dscpclassify postrouting ct mark and \$ct_dscp vmap @ct_dscp"
 }
 
-create_path() {
-	mkdir -p "$1" && return 0
-	log err "Unable to create '$1' path"
-	return 1
-}
-
 create_pre_include() {
 	config_get lan global lan "$lan"
 	config_get wan global wan "$wan"
 
-	pre_include "define lan = { $(mklist "$lan") }"
-	pre_include "define wan = { $(mklist "$wan") }"
+	pre_include "define lan = { $(mklist "$lan" ", ") }"
+	pre_include "define wan = { $(mklist "$wan" ", ") }"
 
-	[ "$action" = "start" ] && {
-		pre_include "include \"/etc/dscpclassify.d/sets.nft\""
-	}
+	check_set_exists threaded_clients || pre_include "add set inet dscpclassify threaded_clients { type ipv4_addr . inet_service . inet_proto; flags timeout; }"
+	check_set_exists threaded_clients6 || pre_include "add set inet dscpclassify threaded_clients6 { type ipv6_addr . inet_service . inet_proto; flags timeout; }"
+	check_set_exists threaded_services || pre_include "add set inet dscpclassify threaded_services { type ipv4_addr . ipv4_addr . inet_service . inet_proto; flags timeout; }"
+	check_set_exists threaded_services6 || pre_include "add set inet dscpclassify threaded_services6 { type ipv6_addr . ipv6_addr . inet_service . inet_proto; flags timeout; }"
+
 	pre_include "include \"/etc/dscpclassify.d/verdicts.nft\""
 	pre_include "include \"/etc/dscpclassify.d/maps.nft\""
 }
@@ -600,20 +674,6 @@ create_post_include() {
 	create_dscp_mark_rule || return 1
 }
 
-delete_includes() {
-	rm -f "/tmp/etc/dscpclassify-pre.include"
-	rm -f "/tmp/etc/dscpclassify-post.include"
-}
-
-delete_table() {
-	nft delete table inet dscpclassify 2>/dev/null
-}
-
-cleanup() {
-	delete_includes
-	delete_table
-}
-
 flush_table() {
 	for i in $(nft -j list chains | jsonfilter -e '@.nftables[@.chain.table="dscpclassify"].chain.name'); do
 		nft flush chain inet dscpclassify "$i"
@@ -626,28 +686,25 @@ flush_table() {
 setup() {
 	local action lan wan
 
+	delete_includes
+
 	action="$1"
 	lan="$(fw_zone_dev lan)" || return 0
 	wan="$(fw_zone_dev wan)" || return 0
 
 	config_load dscpclassify || return 1
+	config_get_bool DEBUG global debug "$DEBUG"
 
-	case "$action" in
-	start) delete_table ;;
-	reload) flush_table ;;
-	*)
-		log err "Invalid setup action"
-		return 1
-		;;
-	esac
-	delete_includes
+	[ "$action" = "start" ] && delete_table
 
 	create_path "/tmp/etc" || return 1
 	create_pre_include || return 1
 	create_post_include || return 1
 
+	[ "$action" = "reload" ] && flush_table
+
 	nft -f "/etc/dscpclassify.d/main.nft" || return 1
-	delete_includes
+	[ "$DEBUG" != 1 ] && delete_includes
 
 	return 0
 }
