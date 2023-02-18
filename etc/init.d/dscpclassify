@@ -358,12 +358,12 @@ rule_addr() {
 }
 
 rule_device() {
-	[ -n "$1$2" ] || return 0
+	[ -n "$1" ] || return 0
 
-	if [ -z "$1" ] || [ -z "$2" ]; then
+	[ -n "$2" ] || {
 		log warning "Rules must use the device and direction options in conjunction"
 		return 1
-	fi
+	}
 
 	case "$2" in
 	in) rule_iifname "$1" ;;
@@ -567,11 +567,9 @@ create_dscp_mark_rule() {
 	post_include "add rule inet dscpclassify postrouting ct mark and \$ct_dscp vmap @ct_dscp"
 }
 
-create_include_path() {
-	if [ -p "/tmp/etc" ] || mkdir -p "/tmp/etc"; then
-		return 0
-	fi
-	log err "unable to create /tmp/etc path"
+create_path() {
+	mkdir -p "$1" && return 0
+	log err "Unable to create '$1' path"
 	return 1
 }
 
@@ -629,8 +627,8 @@ setup() {
 	local action lan wan
 
 	action="$1"
-	lan="$(fw_zone_dev lan)" || exit 0
-	wan="$(fw_zone_dev wan)" || exit 0
+	lan="$(fw_zone_dev lan)" || return 0
+	wan="$(fw_zone_dev wan)" || return 0
 
 	config_load dscpclassify || return 1
 
@@ -644,7 +642,7 @@ setup() {
 	esac
 	delete_includes
 
-	create_include_path || return 1
+	create_path "/tmp/etc" || return 1
 	create_pre_include || return 1
 	create_post_include || return 1
 
