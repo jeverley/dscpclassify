@@ -125,11 +125,12 @@ config rule
 
 config rule
 	option name 'ICMP'
-	option proto 'icmp'
+	list proto 'icmp'
+	list proto 'icmpv6'
 	option class 'cs5'
 	option enabled '0'
 
-config rule # A rule which marks all non-HTTP UDP connections from a specific IP as cs4
+config rule # A rule which marks all non-HTTP UDP connections from a specific IP as cs4 and count new connection matches
 	option name 'Game Console non-HTTP'
 	option proto 'udp'
 	list src_ip '192.168.1.100'
