@@ -1,5 +1,5 @@
 #!/bin/sh /etc/rc.common
-# shellcheck disable=SC3043,SC3003,SC2019,SC2018
+# shellcheck disable=SC3043,SC3003,SC2019,SC2018,SC3020,SC3057
 
 START=20
 USE_PROCD=1
@@ -646,9 +646,6 @@ create_dscp_mark_rule() {
 }
 
 create_pre_include() {
-	config_get lan global lan "$lan"
-	config_get wan global wan "$wan"
-
 	pre_include "define lan = { $(mklist "$lan" ", ") }"
 	pre_include "define wan = { $(mklist "$wan" ", ") }"
 
@@ -684,17 +681,36 @@ flush_table() {
 	done
 }
 
+get_zones() {
+	local dev lan_zones wan_zones
+
+	config_get lan global lan_device
+	config_get lan_zones global lan_zone "lan"
+
+	for i in $lan_zones; do
+		dev="$(fw_zone_dev "$i")" && lan="${lan:+$lan }$dev"
+	done
+	[ -n "$lan" ] || return 1
+	
+	config_get wan global wan_device
+	config_get wan_zones global wan_zone "wan"
+
+	for i in $wan_zones; do
+		dev="$(fw_zone_dev "$i")" && wan="${wan:+$wan }$dev"
+	done
+	[ -n "$wan" ] || return 1
+}
+
 setup() {
 	local action lan wan
 
 	delete_includes
-
 	action="$1"
-	lan="$(fw_zone_dev lan)" || return 0
-	wan="$(fw_zone_dev wan)" || return 0
 
 	config_load dscpclassify || return 1
 	config_get_bool DEBUG global debug "$DEBUG"
+
+	get_zones || return 0
 
 	[ "$action" = "start" ] && delete_table
 
