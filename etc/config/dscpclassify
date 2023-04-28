@@ -10,7 +10,12 @@ config ipset
 	option name 'xcloud'
 	option interval '1'
 	list entry '13.104.0.0/14' # Western Europe
-
+		
+config ipset
+	option name 'GeForceNOWIPv4'
+	option interval '1'
+	list entry '80.84.160.0/20' # EU ASN AS50889
+	
 config ipset
 	option name 'xcloud6'
 	option family 'ipv6'
@@ -89,6 +94,14 @@ config rule
 	list dest_port '1000-1150'
 	list dest_port '9002'
 	option class 'af41'
+	
+config rule
+	option name 'NVIDIA GFN'
+	option proto 'udp'
+	option family 'ipv4'
+	list dest_ip '@GeForceNOWIPv4'
+	option src_port '49003-49006'
+	option class 'af41'
 
 config rule
 	option name 'Microsoft Teams voice'
@@ -122,7 +135,22 @@ config rule
 	list dest_ip '52.122.0.0/15'
 	list dest_ip '2603:1063::/39'
 	option class 'af21'
-
+	
+config rule
+	option name 'Discord VoIP'
+	option proto 'udp'
+	list dest_ip '66.22.196.0/22' # Rotterdam, EU - discord-nlrtm1-1
+	list dest_ip '66.22.204.0/22' # Chicago, US - discord-uschi1-1
+	list dest_ip '66.22.246.0/24' # Brazil, BR - discord-brcoa1-2
+	option class 'ef'
+	
+config rule
+	option name 'Apple FaceTime'
+	option dest_port '16384-16387'
+ 	option dest_port '16393-16402'
+	list dest_ip '17.0.0.0/8'
+	option class 'af41'	
+	
 config rule
 	option name 'ICMP'
 	list proto 'icmp'
