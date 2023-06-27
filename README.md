@@ -53,6 +53,10 @@ chmod +x "/etc/init.d/dscpclassify"
 /etc/init.d/dscpclassify start
 ```
 
+**SQM should be installed and configured on your device**
+
+The OpenWrt guide for configuring this is here https://openwrt.org/docs/guide-user/network/traffic-shaping/sqm
+
 Ingress DSCP marking requires the SQM queue setup script 'layer_cake_ct.qos' and the package 'kmod-sched-ctinfo'.
 
 To install these via command line you can use the following:
