@@ -6,7 +6,7 @@ table inet dscpclassify {
     }
 
     chain dscp_set_le {
-        ip dscp set $lephb
+        ip dscp set $lephb #LE does not appear to be implemented yet to need to be explicit $
         ip6 dscp set $lephb
     }
 

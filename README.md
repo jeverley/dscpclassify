@@ -27,7 +27,7 @@ Connections that do not match a pre-specified rule will be dynamically classifie
     * diffserv8: Below besteffort (CS0) traffic, but above low effort (LE) traffic.
 
 ### External classification
-The service will respect DSCP classification stored by an external service in a connection's conntrack bits, this could include services such as netifyd.
+The service will respect DSCP classification stored by an external service in a connection's conntrack bits, this could include services such as netifyd. See https://www.man7.org/linux/man-pages/man8/tc-ctinfo.8.html
 
 ## Service architecture
 ![image](https://user-images.githubusercontent.com/46714706/188151111-9167e54d-482e-4584-b43b-0759e0ad7561.png)
@@ -36,13 +36,9 @@ The service will respect DSCP classification stored by an external service in a 
 To install the dscpclassify service via command line you can use the following:
 
 ```
-repo="https://raw.githubusercontent.com/jeverley/dscpclassify/main"
+repo="https://raw.githubusercontent.com/mattytap/dscpclassify/mattytap"
 mkdir -p "/etc/dscpclassify.d"
-if [ ! -f "/etc/config/dscpclassify" ]; then
-    wget "$repo/etc/config/dscpclassify" -O "/etc/config/dscpclassify"
-else
-    wget "$repo/etc/config/dscpclassify" -O "/etc/config/dscpclassify_git"
-fi
+wget "$repo/etc/config/dscpclassify" -O "/etc/config/dscpclassify"
 wget "$repo/etc/dscpclassify.d/main.nft" -O "/etc/dscpclassify.d/main.nft"
 wget "$repo/etc/dscpclassify.d/maps.nft" -O "/etc/dscpclassify.d/maps.nft"
 wget "$repo/etc/dscpclassify.d/verdicts.nft" -O "/etc/dscpclassify.d/verdicts.nft"
@@ -51,6 +47,7 @@ wget "$repo/etc/init.d/dscpclassify" -O "/etc/init.d/dscpclassify"
 chmod +x "/etc/init.d/dscpclassify"
 /etc/init.d/dscpclassify enable
 /etc/init.d/dscpclassify start
+nft list ruleset
 ```
 
 **SQM should be installed and configured on your device**
@@ -62,7 +59,7 @@ Ingress DSCP marking requires the SQM queue setup script 'layer_cake_ct.qos' and
 To install these via command line you can use the following:
 
 ```
-repo="https://raw.githubusercontent.com/jeverley/dscpclassify/main"
+repo="https://raw.githubusercontent.com/mattytap/dscpclassify/mattytap"
 opkg update
 opkg install kmod-sched-ctinfo
 wget "$repo/usr/lib/sqm/layer_cake_ct.qos" -O "/usr/lib/sqm/layer_cake_ct.qos"

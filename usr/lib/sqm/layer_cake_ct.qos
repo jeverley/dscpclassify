@@ -40,7 +40,27 @@ ingress() {
     $IP link set dev $DEV up
 
     # redirect all IP packets arriving in $IFACE to ifb0
-    # set DSCP mark from conntrack mark
+    # set DSCP mark from conntrack mark (pull from conntrack table in kernel: conntrack -L mark field)
+    # based on https://www.man7.org/linux/man-pages/man8/tc-ctinfo.8.html
+    # CTINFO (Conntrack Information) is a tc action for retrieving data
+    # from conntrack marks into various fields.
+    # DSCP mode (tc ctinfo dscp ) copies a DSCP stored in conntrack's connmark into the
+    # IPv4/v6 diffserv field.  The copying may conditionally occur
+    # based on a flag also stored in the connmark.  DSCP mode was
+    # designed to assist in restoring packet classifications on
+    # ingress, classifications which may then be used by qdiscs such as
+    # CAKE.  It may be used in any circumstance where ingress
+    # classification needs to be maintained across links that otherwise
+    # bleach or remap according to their own policies.
+
+    # the ctinfo in set in nftables on first (and subsequebt frames in connection)
+    # ct mark set meta mark
+
+    # but as per commit cbfd72d
+    # Use 'matchall' filter type to match all packets instead of u32 matching on everything.
+    
+    # Remove flowid 1:1 as this can make cake 'flow blind' see:
+    # https://lists.bufferbloat.net/pipermail/cake/2019-September/005031.html
     $TC filter add dev $IFACE parent ffff: matchall \
     action ctinfo dscp 0x0000003f mirred egress redirect dev $DEV
 }

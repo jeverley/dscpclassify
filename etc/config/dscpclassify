@@ -1,15 +1,20 @@
 config global 'global'
-	option class_bulk 'le'
+	option class_bulk 'le' #LE introduced in RFC8622
 	option class_high_throughput 'af13'
 	option client_hints '1'
 	option threaded_client_min_bytes '10000'
 	option threaded_service_min_bytes '1000000'
-	option wmm '0'
+	option wmm '1' #See RFC8325
 
 config ipset
 	option name 'xcloud'
 	option interval '1'
 	list entry '13.104.0.0/14' # Western Europe
+
+config ipset
+	option name 'GeForceNOWIPv4'
+	option interval '1'
+	list entry '80.84.160.0/20' # EU ASN AS50889
 
 config ipset
 	option name 'xcloud6'
@@ -25,6 +30,7 @@ config rule
 	list dest_port '853'
 	list dest_port '5353'
 	option class 'cs5'
+	option counter '1'
 
 config rule
 	option name 'DoH'
@@ -52,6 +58,7 @@ config rule
 	list dest_ip '2a10:50c0::ded:ff'	# AdGuard Dedicated
 	list dest_port '443'
 	option class 'cs5'
+	option counter '1'
 
 config rule
 	option name 'BOOTP/DHCP'
@@ -59,18 +66,21 @@ config rule
 	list dest_port '67'
 	list dest_port '68'
 	option class 'cs5'
+	option counter '1'
 
 config rule
 	option name 'NTP'
 	option proto 'udp'
 	option dest_port '123'
 	option class 'cs5'
+	option counter '1'
 
 config rule
 	option name 'SSH'
 	option proto 'tcp'
 	option dest_port '22'
 	option class 'cs2'
+	option counter '1'
 
 config rule
 	option name 'Xbox Cloud Gaming'
@@ -80,6 +90,7 @@ config rule
 	list dest_port '1000-1150'
 	list dest_port '9002'
 	option class 'af41'
+	option counter '1'
 
 config rule
 	option name 'Xbox Cloud Gaming IPv6'
@@ -89,6 +100,16 @@ config rule
 	list dest_port '1000-1150'
 	list dest_port '9002'
 	option class 'af41'
+	option counter '1'
+
+config rule
+	option name 'NVIDIA GFN'
+	option proto 'udp'
+	option family 'ipv4'
+	list dest_ip '@GeForceNOWIPv4'
+	option src_port '49003-49006'
+	option class 'af41'
+	option counter '1'
 
 config rule
 	option name 'Microsoft Teams voice'
@@ -100,6 +121,7 @@ config rule
 	list dest_ip '52.122.0.0/15'
 	list dest_ip '2603:1063::/39'
 	option class 'ef'
+	option counter '1'
 
 config rule
 	option name 'Microsoft Teams video'
@@ -111,6 +133,7 @@ config rule
 	list dest_ip '52.122.0.0/15'
 	list dest_ip '2603:1063::/39'
 	option class 'af41'
+	option counter '1'
 
 config rule
 	option name 'Microsoft Teams sharing'
@@ -122,13 +145,32 @@ config rule
 	list dest_ip '52.122.0.0/15'
 	list dest_ip '2603:1063::/39'
 	option class 'af21'
+	option counter '1'
+
+config rule
+	option name 'Discord VoIP'
+	option proto 'udp'
+	list dest_ip '66.22.196.0/22' # Rotterdam, EU - discord-nlrtm1-1
+	list dest_ip '66.22.204.0/22' # Chicago, US - discord-uschi1-1
+	list dest_ip '66.22.246.0/24' # Brazil, BR - discord-brcoa1-2
+	option class 'ef'
+	option counter '1'
+
+config rule
+	option name 'Apple FaceTime' # Note: src_ports for this to work. Is it possible split out voice?
+	list src_port '16384-16387'
+	list src_port '16393-16402'
+	list dest_ip '17.0.0.0/8'
+	option class 'af41'	
+	option counter '1'
 
 config rule
 	option name 'ICMP'
 	list proto 'icmp'
 	list proto 'icmpv6'
 	option class 'cs5'
-	option enabled '0'
+	option counter '1'
+	option enabled '1'
 
 config rule # A rule which marks all non-HTTP UDP connections from a specific IP as cs4 and count new connection matches
 	option name 'Game Console non-HTTP'
@@ -138,4 +180,47 @@ config rule # A rule which marks all non-HTTP UDP connections from a specific IP
 	list dest_port '!443'
 	option class 'cs4'
 	option counter '1'
-	option enabled '0'
+	option enabled '1'
+
+config rule
+	option name 'Voipify VoIP'
+	option proto 'udp'
+	list dest_ip '95.172.238.85'
+	option class 'ef'
+	option counter '1'
+
+# WhatsApp uses these ports:
+#	80, 443, 4244, 5222, 5223, 5228, 5242 TCP
+#	50318, 59234 TCP/UDP
+#	3478, 45395 UDP
+
+# VoIP STUN (Session Traversal Utilities for NAT) port.
+# It operates on port 3478 TCP/UDP, may also use port 19302 UDP.
+# It is usually supported by newer VoIP devices. [RFC5389] [RFC5766] [RFC5780]
+
+# Microsoft Teams uses UDP ports 3478 through 3481 for voice, video and sharing.
+
+# WhatsApp voice/video observed to use same server(s) and dest_port (3478)
+# cant see any differentation in flags eg fragmwnt
+# though voice frames are much smaller circa 200; video circa 1,000
+# Can initial frame length (or Ave frame length??) be used to differentiate Voice and set Dscp 
+# and once connmark is set, does conntrack mainstain this forvthe duration of the connection?
+
+# Along with WA, may as well set remaining STUN (3478) as Video.
+config rule
+	option name 'STUN various' # whatsapp both voice and video coded for moment as video (af41) voice=51509 ??
+	option proto 'udp'
+	list dest_port '3478'
+	option class 'af41'
+	option counter '1'
+
+# From observations
+config rule
+	option name 'Vodafone UK WiFiCall ESP'
+	option proto 'udp'
+	list dest_ip '88.82.11.0/24'
+	list src_port '4500'
+	list dest_port '4500'
+	option class 'ef'
+	option counter '1'
+
