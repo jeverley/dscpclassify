@@ -1,12 +1,14 @@
 #!/bin/sh /etc/rc.common
 # shellcheck disable=SC3043,SC3003,SC2019,SC2018,SC3020,SC3057
+# ipv6 removed
 
 START=20
 USE_PROCD=1
-DEBUG=0
+DEBUG=1
 
 log() {
 	logger -t dscpclassify -p "daemon.$1" "$2"
+	printf "$1 $2\n"
 }
 
 create_path() {
@@ -105,7 +107,7 @@ convert_duration_to_seconds() {
 
 check_family() {
 	case "$1" in
-	ipv4 | ipv6) return 0 ;;
+	ipv4) return 0 ;;
 	esac
 
 	return 1
@@ -126,7 +128,7 @@ check_set_name() {
 		log warning "Set is missing the name option"
 		return 1
 		;;
-	threaded_clients | threaded_clients6 | threaded_services | threaded_services6)
+	threaded_clients | threaded_services)
 		log warning "Sets cannot overwrite built-in dscpclassify sets"
 		return 1
 		;;
@@ -139,7 +141,7 @@ check_set_size() {
 	[ -n "$1" ] || return 0
 
 	if ! [ "$1" -ge 1 ] 2>/dev/null || ! [ "$1" -le 65535 ] 2>/dev/null; then
-		log warning "Set contains an invalid maxelem option"
+		log warning "Set '$name' contains an invalid maxelem option"
 		return 1
 	fi
 
@@ -206,14 +208,6 @@ parse_rule_ips() {
 			continue
 		}
 
-		echo "$i" | grep -q -E -e "^!?(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)(/[0-9]{1,3})?$" && {
-			case "$i" in
-			"!"*) ipv6_negate="$ipv6_negate ${i#*!}" ;;
-			*) ipv6="$ipv6 $i" ;;
-			esac
-			continue
-		}
-
 		echo "$i" | grep -q -E -e "^!?@\w+$" && {
 			case "$i" in
 			"!"*) ipset_negate="$ipset_negate ${i#*!}" ;;
@@ -240,7 +234,7 @@ parse_set_timeout() {
 	}
 
 	check_duration "$timeout" || {
-		log warning "Set contains an invalid timeout option"
+		log warning "Set '$name' contains an invalid timeout option"
 		return 1
 	}
 
@@ -280,7 +274,7 @@ parse_set_type() {
 		case "$i" in
 		src_* | dest_*) true ;;
 		*)
-			log warning "Set contains an invalid match option"
+			log warning "Set '$name' contains an invalid match option"
 			return 1
 			;;
 		esac
@@ -294,7 +288,7 @@ parse_set_type() {
 			flag_interval=1
 			;;
 		*)
-			log warning "Set contains an invalid match option"
+			log warning "Set '$name' contains an invalid match option"
 			return 1
 			;;
 		esac
@@ -329,7 +323,7 @@ create_user_set() {
 	check_set_name "$name" || return 1
 	check_set_size "$size" || return 1
 	check_family "$family" || {
-		log warning "Set contains an invalid family"
+		log warning "Set $name contains an invalid family"
 		return 1
 	}
 
@@ -373,7 +367,7 @@ rule_zone() {
 	[ -n "$2" ] || return 0
 
 	device="$(fw_zone_dev "$2")" || {
-		log warning "Rule contains an invalid $1 zone"
+		log warning "Rule '$name' contains an invalid $1 zone"
 		return 1
 	}
 
@@ -402,7 +396,7 @@ rule_port() {
 	[ -n "$2" ] || return 0
 
 	parse_rule_ports "$2" || {
-		log warning "Rule contains an invalid $1_port"
+		log warning "Rule '$name' contains an invalid $1_port"
 		return 1
 	}
 	check_port_proto "$3" || {
@@ -418,9 +412,9 @@ rule_port() {
 }
 
 rule_addr() {
-	local rule rule6 xaddr
-	local ipv4 ipv6 ipset
-	local ipv4_negate ipv6_negate ipset_negate
+	local rule xaddr
+	local ipv4 ipset
+	local ipv4_negate ipset_negate
 
 	case "$1" in
 	src) xaddr="saddr" ;;
@@ -434,23 +428,15 @@ rule_addr() {
 	[ -n "$2" ] || return 0
 
 	if [ -n "$3" ] && ! check_family "$3"; then
-		log warning "Rule contains an invalid family"
+		log warning "Rule '$name' contains an invalid family"
 		return 1
 	fi
 	parse_rule_ips "$2" || {
-		log warning "Rule contains an invalid $1_ip"
+		log warning "Rule '$name' contains an invalid $1_ip"
 		return 1
 	}
-	if [ -n "$ipset$ipset_negate" ] && [ -n "$ipv4$ipv6$ipv4_negate$ipv6_negate" ]; then
+	if [ -n "$ipset$ipset_negate" ] && [ -n "$ipv4$ipv4_negate" ]; then
 		log warning "Rules must not mix IP addresses and sets in the $1_ip option"
-		return 1
-	fi
-	if [ -n "$ipv4$ipv4_negate" ] && [ "$3" = "ipv6" ]; then
-		log warning "Rules cannot combine an ipv4 $1_ip with the 'ipv6' family option"
-		return 1
-	fi
-	if [ -n "$ipv6$ipv6_negate" ] && [ "$3" = "ipv4" ]; then
-		log warning "Rules cannot combine an ipv6 $1_ip with the 'ipv4' family option"
 		return 1
 	fi
 	if [ "$(echo "$ipset" | wc -w)" -gt 1 ] || [ "$(echo "$ipset_negate" | wc -w)" -gt 1 ]; then
@@ -461,17 +447,10 @@ rule_addr() {
 	[ -n "$ipv4" ] && rule="ip $xaddr { $(mklist "$ipv4" ", ") }"
 	[ -n "$ipv4_negate" ] && rule="$rule ip $xaddr != { $(mklist "$ipv4_negate" ", ") }"
 
-	[ -n "$ipv6" ] && rule6="ip6 $xaddr { $(mklist "$ipv6" ", ") }"
-	[ -n "$ipv6_negate" ] && rule6="$rule6 ip6 $xaddr != { $(mklist "$ipv6_negate" ", ") }"
-
 	[ -n "$ipset$ipset_negate" ] && case "$3" in
 	ipv4)
 		[ -n "$ipset" ] && rule="$rule ip $xaddr $ipset"
 		[ -n "$ipset_negate" ] && rule="$rule ip $xaddr != $ipset_negate"
-		;;
-	ipv6)
-		[ -n "$ipset" ] && rule6="$rule6 ip6 $xaddr $ipset"
-		[ -n "$ipset_negate" ] && rule6="$rule6 ip6 $xaddr != $ipset_negate"
 		;;
 	*)
 		log warning "Rules must contain the family option when a set is present in the $1_ip option"
@@ -480,7 +459,6 @@ rule_addr() {
 	esac
 
 	eval "$xaddr"='$rule'
-	eval "$xaddr"6='$rule6'
 	return 0
 }
 
@@ -510,7 +488,7 @@ rule_verdict() {
 		return 1
 	}
 	class="$(check_class "$1")" || {
-		log warning "Rule contains an invalid DSCP class"
+		log warning "Rule '$name' contains an invalid DSCP class"
 		return 1
 	}
 
@@ -519,7 +497,7 @@ rule_verdict() {
 
 create_user_rule() {
 	local enabled family proto direction device dest dest_ip dest_port src src_ip src_port counter class name
-	local nfproto l4proto oifname daddr daddr6 dport iifname saddr saddr6 sport verdict
+	local nfproto l4proto oifname daddr dport iifname saddr sport verdict
 
 	config_get_bool enabled "$1" enabled 1
 	[ "$enabled" = 1 ] || return 0
@@ -549,15 +527,12 @@ create_user_rule() {
 	rule_device "$device" "$direction" || return 1
 	rule_verdict "$class" || return 1
 
-	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
+	[ -z "$daddr$saddr" ] && {
 		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $dport $iifname $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 		return 0
 	}
 	[ -n "$daddr$saddr" ] && {
 		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
-	}
-	[ -n "$daddr6$saddr6" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 	}
 	return 0
 }
@@ -568,7 +543,6 @@ create_client_hints_rule() {
 	config_get_bool client_hints global client_hints 1
 	[ "$client_hints" = 1 ] || return 0
 
-	post_include "insert rule inet dscpclassify static_classify ip6 dscp != { cs0, cs6, cs7 } iifname != \$wan ip6 dscp vmap @dscp_ct"
 	post_include "insert rule inet dscpclassify static_classify ip dscp != { cs0, cs6, cs7 } iifname != \$wan ip dscp vmap @dscp_ct"
 }
 
@@ -577,28 +551,25 @@ create_threaded_client_rule() {
 
 	config_get threaded_client_min_connections global threaded_client_min_connections 10
 	if ! check_uint "$threaded_client_min_connections" || [ "$threaded_client_min_connections" -lt 2 ]; then
-		log err "Global option threaded_client_min_connections contains an invalid value"
+		log err "Global option 'threaded_client_min_connections' contains an invalid value"
 		return 1
 	fi
 	config_get threaded_client_min_bytes global threaded_client_min_bytes 10000
 	if ! check_uint "$threaded_client_min_bytes" || [ "$threaded_client_min_bytes" = 0 ]; then
-		log err "Global option threaded_client_min_bytes contains an invalid value"
+		log err "Global option 'threaded_client_min_bytes' contains an invalid value"
 		return 1
 	fi
 	config_get class_bulk global class_bulk le
 	class_bulk="$(check_class "$class_bulk")" || {
-		log err "Global option class_bulk contains an invalid DSCP class"
+		log err "Global option 'class_bulk' contains an invalid DSCP class"
 		return 1
 	}
 
 	post_include "add rule inet dscpclassify established_connection meter tc_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((threaded_client_min_connections - 1))/minute } add @threaded_clients { ip daddr . th dport . meta l4proto timeout 30s }"
-	post_include "add rule inet dscpclassify established_connection meter tc_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((threaded_client_min_connections - 1))/minute } add @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
 
 	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients { ip saddr . th sport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
-	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
 
 	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients { ip daddr . th dport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
-	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
 }
 
 create_threaded_service_rule() {
@@ -606,31 +577,28 @@ create_threaded_service_rule() {
 
 	config_get threaded_service_min_connections global threaded_service_min_connections 3
 	if ! check_uint "$threaded_service_min_connections" || [ "$threaded_service_min_connections" -lt 2 ]; then
-		log err "Global option threaded_service_min_connections contains an invalid value"
+		log err "Global option 'threaded_service_min_connections' contains an invalid value"
 		return 1
 	fi
 	config_get threaded_service_min_bytes global threaded_service_min_bytes 1000000
 	check_uint "$threaded_service_min_bytes" || {
-		log err "Global option threaded_service_min_bytes contains an invalid value"
+		log err "Global option 'threaded_service_min_bytes' contains an invalid value"
 		return 1
 	}
 	config_get class_high_throughput global class_high_throughput af13
 	class_high_throughput="$(check_class "$class_high_throughput")" || {
-		log err "Global option class_high_throughput contains an invalid DSCP class"
+		log err "Global option 'class_high_throughput' contains an invalid DSCP class"
 		return 1
 	}
 
 	post_include "add rule inet dscpclassify established_connection meter ts_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((threaded_service_min_connections - 1))/minute } add @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
-	post_include "add rule inet dscpclassify established_connection meter ts_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((threaded_service_min_connections - 1))/minute } add @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
 
 	post_include "add rule inet dscpclassify threaded_service ct original bytes < $threaded_service_min_bytes return"
 	post_include "add rule inet dscpclassify threaded_service update @threaded_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"
-	post_include "add rule inet dscpclassify threaded_service update @threaded_services6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }"
 	post_include "add rule inet dscpclassify threaded_service goto ct_set_$class_high_throughput"
 
 	post_include "add rule inet dscpclassify threaded_service_reply ct reply bytes < $threaded_service_min_bytes return"
 	post_include "add rule inet dscpclassify threaded_service_reply update @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }"
-	post_include "add rule inet dscpclassify threaded_service_reply update @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }"
 	post_include "add rule inet dscpclassify threaded_service_reply goto ct_set_$class_high_throughput"
 }
 
@@ -650,9 +618,7 @@ create_pre_include() {
 
 	pre_include "add table inet dscpclassify"
 	check_set_exists threaded_clients || pre_include "add set inet dscpclassify threaded_clients { type ipv4_addr . inet_service . inet_proto; flags timeout; }"
-	check_set_exists threaded_clients6 || pre_include "add set inet dscpclassify threaded_clients6 { type ipv6_addr . inet_service . inet_proto; flags timeout; }"
 	check_set_exists threaded_services || pre_include "add set inet dscpclassify threaded_services { type ipv4_addr . ipv4_addr . inet_service . inet_proto; flags timeout; }"
-	check_set_exists threaded_services6 || pre_include "add set inet dscpclassify threaded_services6 { type ipv6_addr . ipv6_addr . inet_service . inet_proto; flags timeout; }"
 
 	pre_include "include \"/etc/dscpclassify.d/verdicts.nft\""
 	pre_include "include \"/etc/dscpclassify.d/maps.nft\""

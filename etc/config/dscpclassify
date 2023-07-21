@@ -16,12 +16,6 @@ config ipset
 	option interval '1'
 	list entry '80.84.160.0/20' # EU ASN AS50889
 
-config ipset
-	option name 'xcloud6'
-	option family 'ipv6'
-	option interval '1'
-	list entry '2603:1000::/24' # Western Europe
-
 config rule
 	option name 'DNS'
 	list proto 'tcp'
@@ -45,17 +39,6 @@ config rule
 	list dest_ip '9.9.9.11'				# Quad9 Secured w/ECS
 	list dest_ip '149.112.112.11'		# Quad9 Secured w/ECS
 	list dest_ip '94.140.14.0/24'		# AdGuard
-	list dest_ip '2001:4860:4860::8888' # Google
-	list dest_ip '2001:4860:4860::8844' # Google
-	list dest_ip '2606:4700:4700::1111' # Cloudflare
-	list dest_ip '2606:4700:4700::1001' # Cloudflare
-	list dest_ip '2620:fe::fe'			# Quad9 Secured
-	list dest_ip '2620:fe::9'			# Quad9 Secured
-	list dest_ip '2620:fe::11'			# Quad9 Secured w/ECS
-	list dest_ip '2620:fe::fe:11'		# Quad9 Secured w/ECS
-	list dest_ip '2a10:50c0::ad1:ff'	# AdGuard
-	list dest_ip '2a10:50c0::ad2:ff'	# AdGuard
-	list dest_ip '2a10:50c0::ded:ff'	# AdGuard Dedicated
 	list dest_port '443'
 	option class 'cs5'
 	option counter '1'
@@ -93,16 +76,6 @@ config rule
 	option counter '1'
 
 config rule
-	option name 'Xbox Cloud Gaming IPv6'
-	option proto 'udp'
-	option family 'ipv6'
-	list dest_ip '@xcloud6'
-	list dest_port '1000-1150'
-	list dest_port '9002'
-	option class 'af41'
-	option counter '1'
-
-config rule
 	option name 'NVIDIA GFN'
 	option proto 'udp'
 	option family 'ipv4'
@@ -119,7 +92,6 @@ config rule
 	list dest_ip '13.107.64.0/18'
 	list dest_ip '52.112.0.0/14'
 	list dest_ip '52.122.0.0/15'
-	list dest_ip '2603:1063::/39'
 	option class 'ef'
 	option counter '1'
 
@@ -131,7 +103,6 @@ config rule
 	list dest_ip '13.107.64.0/18'
 	list dest_ip '52.112.0.0/14'
 	list dest_ip '52.122.0.0/15'
-	list dest_ip '2603:1063::/39'
 	option class 'af41'
 	option counter '1'
 
@@ -143,7 +114,6 @@ config rule
 	list dest_ip '13.107.64.0/18'
 	list dest_ip '52.112.0.0/14'
 	list dest_ip '52.122.0.0/15'
-	list dest_ip '2603:1063::/39'
 	option class 'af21'
 	option counter '1'
 
@@ -167,7 +137,6 @@ config rule
 config rule
 	option name 'ICMP'
 	list proto 'icmp'
-	list proto 'icmpv6'
 	option class 'cs5'
 	option counter '1'
 	option enabled '1'

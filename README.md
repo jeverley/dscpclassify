@@ -1,3 +1,4 @@
+*** IPV4 ONLY ***
 # DSCP Classify
 An nftables based service for applying DSCP classifications to connections, compatible with OpenWrt's firewall4 for dynamically setting DSCP packet marks (this only works in OpenWrt 22.03 and above).
 
