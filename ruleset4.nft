@@ -1,0 +1,264 @@
+table inet fw4 {
+	ct helper amanda {
+		type "amanda" protocol udp
+		l3proto inet
+	}
+
+	ct helper ftp {
+		type "ftp" protocol tcp
+		l3proto inet
+	}
+
+	ct helper RAS {
+		type "RAS" protocol udp
+		l3proto inet
+	}
+
+	ct helper Q.931 {
+		type "Q.931" protocol tcp
+		l3proto inet
+	}
+
+	ct helper irc {
+		type "irc" protocol tcp
+		l3proto ip
+	}
+
+	ct helper pptp {
+		type "pptp" protocol tcp
+		l3proto ip
+	}
+
+	ct helper sip {
+		type "sip" protocol udp
+		l3proto inet
+	}
+
+	ct helper snmp {
+		type "snmp" protocol udp
+		l3proto ip
+	}
+
+	ct helper tftp {
+		type "tftp" protocol udp
+		l3proto inet
+	}
+
+	chain input {
+		type filter hook input priority filter; policy drop;
+		iifname "lo" accept comment "!fw4: Accept traffic from loopback"
+		ct state established,related accept comment "!fw4: Allow inbound established and related flows"
+		ct state invalid drop comment "!fw4: Drop flows with invalid conntrack state"
+		tcp flags syn / fin,syn,rst,ack jump syn_flood comment "!fw4: Rate limit TCP syn packets"
+		meta nfproto ipv4 iifname { "br-lan", "br-swlan", "eth2" } jump input_lan comment "!fw4: Handle lan IPv4 input traffic"
+		meta nfproto ipv4 iifname { "eth0", "eth5" } jump input_wan comment "!fw4: Handle wan IPv4 input traffic"
+		jump handle_reject
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept comment "!fw4: Allow forwarded established and related flows"
+		ct state invalid drop comment "!fw4: Drop flows with invalid conntrack state"
+		meta nfproto ipv4 iifname { "br-lan", "br-swlan", "eth2" } jump forward_lan comment "!fw4: Handle lan IPv4 forward traffic"
+		meta nfproto ipv4 iifname { "eth0", "eth5" } jump forward_wan comment "!fw4: Handle wan IPv4 forward traffic"
+		jump upnp_forward comment "Hook into miniupnpd forwarding chain"
+		jump handle_reject
+	}
+
+	chain output {
+		type filter hook output priority filter; policy drop;
+		oifname "lo" accept comment "!fw4: Accept traffic towards loopback"
+		ct state established,related accept comment "!fw4: Allow outbound established and related flows"
+		ct state invalid drop comment "!fw4: Drop flows with invalid conntrack state"
+		meta nfproto ipv4 oifname { "br-lan", "br-swlan", "eth2" } jump output_lan comment "!fw4: Handle lan IPv4 output traffic"
+		meta nfproto ipv4 oifname { "eth0", "eth5" } jump output_wan comment "!fw4: Handle wan IPv4 output traffic"
+		jump handle_reject
+	}
+
+	chain prerouting {
+		type filter hook prerouting priority filter; policy accept;
+		meta nfproto ipv4 iifname { "br-lan", "br-swlan", "eth2" } jump helper_lan comment "!fw4: Handle lan IPv4 helper assignment"
+	}
+
+	chain handle_reject {
+		meta l4proto tcp reject with tcp reset comment "!fw4: Reject TCP traffic"
+		reject comment "!fw4: Reject any other traffic"
+	}
+
+	chain syn_flood {
+		limit rate 25/second burst 50 packets return comment "!fw4: Accept SYN packets below rate-limit"
+		drop comment "!fw4: Drop excess packets"
+	}
+
+	chain input_lan {
+		jump accept_from_lan
+	}
+
+	chain output_lan {
+		jump accept_to_lan
+	}
+
+	chain forward_lan {
+		meta nfproto ipv4 jump accept_to_Net2Shield comment "!fw4: Accept lan to Net2Shield IPv4 forwarding"
+		meta nfproto ipv4 jump accept_to_wan comment "!fw4: Accept lan to wan IPv4 forwarding"
+		meta nfproto ipv4 jump accept_to_Proton1VPN comment "!fw4: Accept lan to Proton1VPN IPv4 forwarding"
+		jump accept_to_lan
+		log prefix "reject lan forward: "
+	}
+
+	chain helper_lan {
+		udp dport 10080 ct helper set "amanda" comment "!fw4: Amanda backup and archiving proto"
+		tcp dport 21 ct helper set "ftp" comment "!fw4: FTP passive connection tracking"
+		udp dport 1719 ct helper set "RAS" comment "!fw4: RAS proto tracking"
+		tcp dport 1720 ct helper set "Q.931" comment "!fw4: Q.931 proto tracking"
+		meta nfproto ipv4 tcp dport 6667 ct helper set "irc" comment "!fw4: IRC DCC connection tracking"
+		meta nfproto ipv4 tcp dport 1723 ct helper set "pptp" comment "!fw4: PPTP VPN connection tracking"
+		udp dport 5060 ct helper set "sip" comment "!fw4: SIP VoIP connection tracking"
+		meta nfproto ipv4 udp dport 161 ct helper set "snmp" comment "!fw4: SNMP monitoring connection tracking"
+		udp dport 69 ct helper set "tftp" comment "!fw4: TFTP connection tracking"
+	}
+
+	chain accept_from_lan {
+		meta nfproto ipv4 iifname { "br-lan", "br-swlan", "eth2" } counter packets 74735 bytes 5956001 accept comment "!fw4: accept lan IPv4 traffic"
+	}
+
+	chain accept_to_lan {
+		meta nfproto ipv4 oifname { "br-lan", "br-swlan", "eth2" } counter packets 122 bytes 41167 accept comment "!fw4: accept lan IPv4 traffic"
+	}
+
+	chain input_wan {
+		meta nfproto ipv4 udp dport 68 counter packets 1 bytes 28 accept comment "!fw4: Allow-DHCP-Renew"
+		icmp type echo-request counter packets 47616 bytes 2044770 accept comment "!fw4: Allow-Ping"
+		meta nfproto ipv4 meta l4proto igmp counter packets 0 bytes 0 accept comment "!fw4: Allow-IGMP"
+		jump reject_from_wan
+	}
+
+	chain output_wan {
+		jump accept_to_wan
+	}
+
+	chain forward_wan {
+		meta nfproto ipv4 meta l4proto esp counter packets 0 bytes 0 jump accept_to_lan comment "!fw4: Allow-IPSec-ESP"
+		meta nfproto ipv4 udp dport 500 counter packets 0 bytes 0 jump accept_to_lan comment "!fw4: Allow-ISAKMP"
+		jump reject_to_wan
+		log prefix "reject wan forward: "
+	}
+
+	chain accept_to_wan {
+		meta nfproto ipv4 oifname { "eth0", "eth5" } counter packets 82446 bytes 7806144 accept comment "!fw4: accept wan IPv4 traffic"
+	}
+
+	chain reject_from_wan {
+		meta nfproto ipv4 iifname { "eth0", "eth5" } counter packets 11807 bytes 636751 log prefix "reject wan in: " jump handle_reject comment "!fw4: reject wan IPv4 traffic"
+	}
+
+	chain reject_to_wan {
+		meta nfproto ipv4 oifname { "eth0", "eth5" } counter packets 0 bytes 0 log prefix "reject wan out: " jump handle_reject comment "!fw4: reject wan IPv4 traffic"
+	}
+
+	chain input_Net2Shield {
+		jump reject_from_Net2Shield
+	}
+
+	chain output_Net2Shield {
+		jump accept_to_Net2Shield
+	}
+
+	chain forward_Net2Shield {
+		jump reject_to_Net2Shield
+		log prefix "reject Net2Shield forward: "
+	}
+
+	chain accept_to_Net2Shield {
+	}
+
+	chain reject_from_Net2Shield {
+	}
+
+	chain reject_to_Net2Shield {
+	}
+
+	chain input_Proton1VPN {
+		jump reject_from_Proton1VPN
+	}
+
+	chain output_Proton1VPN {
+		jump accept_to_Proton1VPN
+	}
+
+	chain forward_Proton1VPN {
+		jump reject_to_Proton1VPN
+		log prefix "reject Proton1VPN forward: "
+	}
+
+	chain accept_to_Proton1VPN {
+	}
+
+	chain reject_from_Proton1VPN {
+	}
+
+	chain reject_to_Proton1VPN {
+	}
+
+	chain dstnat {
+		type nat hook prerouting priority dstnat; policy accept;
+		jump upnp_prerouting comment "Hook into miniupnpd prerouting chain"
+	}
+
+	chain srcnat {
+		type nat hook postrouting priority srcnat; policy accept;
+		meta nfproto ipv4 oifname { "eth0", "eth5" } jump srcnat_wan comment "!fw4: Handle wan IPv4 srcnat traffic"
+		jump upnp_postrouting comment "Hook into miniupnpd postrouting chain"
+	}
+
+	chain srcnat_wan {
+		meta nfproto ipv4 masquerade comment "!fw4: Masquerade IPv4 wan traffic"
+	}
+
+	chain srcnat_Net2Shield {
+		meta nfproto ipv4 masquerade comment "!fw4: Masquerade IPv4 Net2Shield traffic"
+	}
+
+	chain srcnat_Proton1VPN {
+		meta nfproto ipv4 masquerade comment "!fw4: Masquerade IPv4 Proton1VPN traffic"
+	}
+
+	chain raw_prerouting {
+		type filter hook prerouting priority raw; policy accept;
+	}
+
+	chain raw_output {
+		type filter hook output priority raw; policy accept;
+	}
+
+	chain mangle_prerouting {
+		type filter hook prerouting priority mangle; policy accept;
+	}
+
+	chain mangle_postrouting {
+		type filter hook postrouting priority mangle; policy accept;
+	}
+
+	chain mangle_input {
+		type filter hook input priority mangle; policy accept;
+	}
+
+	chain mangle_output {
+		type route hook output priority mangle; policy accept;
+	}
+
+	chain mangle_forward {
+		type filter hook forward priority mangle; policy accept;
+		meta nfproto ipv4 iifname { "eth0", "eth5" } tcp flags syn tcp option maxseg size set rt mtu comment "!fw4: Zone wan IPv4 ingress MTU fixing"
+		meta nfproto ipv4 oifname { "eth0", "eth5" } tcp flags syn tcp option maxseg size set rt mtu comment "!fw4: Zone wan IPv4 egress MTU fixing"
+	}
+
+	chain upnp_forward {
+	}
+
+	chain upnp_prerouting {
+	}
+
+	chain upnp_postrouting {
+	}
+}
