@@ -1,0 +1,9 @@
+define lan = { "br-lan", "br-swlan", "eth2" }
+define wan = { "eth0", "eth5" }
+add table inet dscpclassify
+add set inet dscpclassify threaded_clients { type ipv4_addr . inet_service . inet_proto; flags timeout; }
+add set inet dscpclassify threaded_clients6 { type ipv6_addr . inet_service . inet_proto; flags timeout; }
+add set inet dscpclassify threaded_services { type ipv4_addr . ipv4_addr . inet_service . inet_proto; flags timeout; }
+add set inet dscpclassify threaded_services6 { type ipv6_addr . ipv6_addr . inet_service . inet_proto; flags timeout; }
+include "/etc/dscpclassify.d/verdicts.nft"
+include "/etc/dscpclassify.d/maps.nft"
