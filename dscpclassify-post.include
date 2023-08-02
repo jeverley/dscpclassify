@@ -1,0 +1,41 @@
+insert rule inet dscpclassify static_classify ip6 dscp != { cs0, cs6, cs7 } iifname != $wan ip6 dscp vmap @dscp_ct
+insert rule inet dscpclassify static_classify ip dscp != { cs0, cs6, cs7 } iifname != $wan ip dscp vmap @dscp_ct
+add set inet dscpclassify xcloud { type ipv4_addr;   flags interval; auto-merge;  }
+add element inet dscpclassify xcloud { 13.104.0.0/14 }
+add set inet dscpclassify GeForceNOWIPv4 { type ipv4_addr;   flags interval; auto-merge;  }
+add element inet dscpclassify GeForceNOWIPv4 { 80.84.160.0/20 }
+insert rule inet dscpclassify static_classify  meta l4proto { udp }  ip daddr { 88.82.11.0/24 } th dport { 4500 }   th sport { 4500 } counter goto ct_set_ef comment "Vodafone UK WiFiCall ESP"
+insert rule inet dscpclassify static_classify  meta l4proto { udp }  th dport { 3478 }   counter goto ct_set_af41 comment "STUN various"
+insert rule inet dscpclassify static_classify  meta l4proto { udp }  ip daddr { 95.172.238.85 }     counter goto ct_set_ef comment "Voipify VoIP"
+insert rule inet dscpclassify static_classify  meta l4proto { udp }    th dport != { 80, 443 }  ip saddr { 192.168.1.100 }  counter goto ct_set_cs4 comment "Game Console non-HTTP"
+insert rule inet dscpclassify static_classify  meta l4proto { icmp }     counter goto ct_set_cs5 comment "ICMP"
+insert rule inet dscpclassify static_classify    ip daddr { 17.0.0.0/8 }    th sport { 16384-16387, 16393-16402 } counter goto ct_set_af41 comment "Apple FaceTime"
+insert rule inet dscpclassify static_classify  meta l4proto { udp }  ip daddr { 66.22.196.0/22, 66.22.204.0/22, 66.22.246.0/24 }     counter goto ct_set_ef comment "Discord VoIP"
+insert rule inet dscpclassify static_classify  meta l4proto { udp }  ip daddr { 13.107.64.0/18, 52.112.0.0/14, 52.122.0.0/15 } th dport { 3478-3481 }   th sport { 50040-50059 } counter goto ct_set_af21 comment "Microsoft Teams sharing"
+insert rule inet dscpclassify static_classify  meta l4proto { udp }  ip daddr { 13.107.64.0/18, 52.112.0.0/14, 52.122.0.0/15 } th dport { 3478-3481 }   th sport { 50020-50039 } counter goto ct_set_af41 comment "Microsoft Teams video"
+insert rule inet dscpclassify static_classify  meta l4proto { udp }  ip daddr { 13.107.64.0/18, 52.112.0.0/14, 52.122.0.0/15 } th dport { 3478-3481 }   th sport { 50000-50019 } counter goto ct_set_ef comment "Microsoft Teams voice"
+insert rule inet dscpclassify static_classify meta nfproto { ipv4 } meta l4proto { udp }   ip daddr  @GeForceNOWIPv4    th sport { 49003-49006 } counter goto ct_set_af41 comment "NVIDIA GFN"
+insert rule inet dscpclassify static_classify meta nfproto { ipv4 } meta l4proto { udp }   ip daddr  @xcloud th dport { 1000-1150, 9002 }    counter goto ct_set_af41 comment "Xbox Cloud Gaming"
+insert rule inet dscpclassify static_classify  meta l4proto { tcp }  th dport { 22 }   counter goto ct_set_cs2 comment "SSH"
+insert rule inet dscpclassify static_classify  meta l4proto { udp }  th dport { 123 }   counter goto ct_set_cs5 comment "NTP"
+insert rule inet dscpclassify static_classify  meta l4proto { udp }  th dport { 67, 68 }   counter goto ct_set_cs5 comment "BOOTP/DHCP"
+insert rule inet dscpclassify static_classify  meta l4proto { tcp, udp }  ip daddr { 8.8.8.8, 8.8.4.4, 1.1.1.1, 1.0.0.1, 9.9.9.9, 149.112.112.112, 9.9.9.11, 149.112.112.11, 94.140.14.0/24 } th dport { 443 }    counter goto ct_set_cs5 comment "DoH"
+insert rule inet dscpclassify static_classify  meta l4proto { tcp, udp }  th dport { 53, 853, 5353 }   counter goto ct_set_cs5 comment "DNS"
+add rule inet dscpclassify established_connection meter tc_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over 9/minute } add @threaded_clients { ip daddr . th dport . meta l4proto timeout 30s }
+add rule inet dscpclassify established_connection meter tc_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over 9/minute } add @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }
+add rule inet dscpclassify threaded_client meter tc_orig_bulk { ip saddr . th sport . meta l4proto timeout 5m limit rate over 9999 bytes/hour } update @threaded_clients { ip saddr . th sport . meta l4proto timeout 5m } goto ct_set_le
+add rule inet dscpclassify threaded_client meter tc_orig_bulk6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over 9999 bytes/hour } update @threaded_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } goto ct_set_le
+add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk { ip daddr . th dport . meta l4proto timeout 5m limit rate over 9999 bytes/hour } update @threaded_clients { ip daddr . th dport . meta l4proto timeout 5m } goto ct_set_le
+add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over 9999 bytes/hour } update @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } goto ct_set_le
+add rule inet dscpclassify established_connection meter ts_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over 2/minute } add @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }
+add rule inet dscpclassify established_connection meter ts_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over 2/minute } add @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }
+add rule inet dscpclassify threaded_service ct original bytes < 1000000 return
+add rule inet dscpclassify threaded_service update @threaded_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }
+add rule inet dscpclassify threaded_service update @threaded_services6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }
+add rule inet dscpclassify threaded_service goto ct_set_af13
+add rule inet dscpclassify threaded_service_reply ct reply bytes < 1000000 return
+add rule inet dscpclassify threaded_service_reply update @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }
+add rule inet dscpclassify threaded_service_reply update @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }
+add rule inet dscpclassify threaded_service_reply goto ct_set_af13
+add rule inet dscpclassify postrouting oifname $lan ct mark and $ct_dscp vmap @ct_wmm
+add rule inet dscpclassify postrouting ct mark and $ct_dscp vmap @ct_dscp
