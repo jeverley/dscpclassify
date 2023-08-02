@@ -119,16 +119,16 @@ table inet fw4 {
 	}
 
 	chain accept_from_lan {
-		meta nfproto ipv4 iifname { "br-lan", "br-swlan", "eth2" } counter packets 76160 bytes 6066055 accept comment "!fw4: accept lan IPv4 traffic"
+		meta nfproto ipv4 iifname { "br-lan", "br-swlan", "eth2" } counter packets 105611 bytes 8473398 accept comment "!fw4: accept lan IPv4 traffic"
 	}
 
 	chain accept_to_lan {
-		meta nfproto ipv4 oifname { "br-lan", "br-swlan", "eth2" } counter packets 122 bytes 41167 accept comment "!fw4: accept lan IPv4 traffic"
+		meta nfproto ipv4 oifname { "br-lan", "br-swlan", "eth2" } counter packets 159 bytes 53625 accept comment "!fw4: accept lan IPv4 traffic"
 	}
 
 	chain input_wan {
 		meta nfproto ipv4 udp dport 68 counter packets 1 bytes 28 accept comment "!fw4: Allow-DHCP-Renew"
-		icmp type echo-request counter packets 48068 bytes 2065218 accept comment "!fw4: Allow-Ping"
+		icmp type echo-request counter packets 68291 bytes 2960312 accept comment "!fw4: Allow-Ping"
 		meta nfproto ipv4 meta l4proto igmp counter packets 0 bytes 0 accept comment "!fw4: Allow-IGMP"
 		jump reject_from_wan
 	}
@@ -145,11 +145,11 @@ table inet fw4 {
 	}
 
 	chain accept_to_wan {
-		meta nfproto ipv4 oifname { "eth0", "eth5" } counter packets 84059 bytes 7935770 accept comment "!fw4: accept wan IPv4 traffic"
+		meta nfproto ipv4 oifname { "eth0", "eth5" } counter packets 114619 bytes 10455016 accept comment "!fw4: accept wan IPv4 traffic"
 	}
 
 	chain reject_from_wan {
-		meta nfproto ipv4 iifname { "eth0", "eth5" } counter packets 11966 bytes 649666 log prefix "reject wan in: " jump handle_reject comment "!fw4: reject wan IPv4 traffic"
+		meta nfproto ipv4 iifname { "eth0", "eth5" } counter packets 15981 bytes 861785 log prefix "reject wan in: " jump handle_reject comment "!fw4: reject wan IPv4 traffic"
 	}
 
 	chain reject_to_wan {
@@ -582,7 +582,7 @@ table inet dscpclassify {
 		ip daddr { 13.107.64.0/18, 52.112.0.0/14, 52.122.0.0/15 } udp dport 3478-3481 udp sport 50040-50059 counter packets 0 bytes 0 goto ct_set_af21 comment "Microsoft Teams sharing"
 		meta l4proto udp ip daddr { 66.22.196.0/22, 66.22.204.0/22, 66.22.246.0/24 } counter packets 0 bytes 0 goto ct_set_ef comment "Discord VoIP"
 		ip daddr 17.0.0.0/8 th sport { 16384-16387, 16393-16402 } counter packets 0 bytes 0 goto ct_set_af41 comment "Apple FaceTime"
-		meta l4proto icmp counter packets 0 bytes 0 goto ct_set_cs5 comment "ICMP"
+		meta l4proto icmp counter packets 6 bytes 504 goto ct_set_cs5 comment "ICMP"
 		udp dport != { 80, 443 } ip saddr 192.168.1.100 counter packets 0 bytes 0 goto ct_set_cs4 comment "Game Console non-HTTP"
 		meta l4proto udp ip daddr 95.172.238.85 counter packets 0 bytes 0 goto ct_set_ef comment "Voipify VoIP"
 		udp dport 3478 counter packets 0 bytes 0 goto ct_set_af41 comment "STUN various"
