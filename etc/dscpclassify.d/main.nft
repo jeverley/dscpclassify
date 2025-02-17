@@ -35,7 +35,7 @@ define cs6 = 48
 define cs7 = 56
 
 ## Include variable table content
-include "/tmp/etc/dscpclassify-pre.include"
+include "/tmp/etc/dscpclassify.d/pre-include.nft"
 
 table inet dscpclassify {
     ## Classify connections to the router
@@ -121,4 +121,4 @@ table inet dscpclassify {
 }
 
 ## Include configurable rules
-include "/tmp/etc/dscpclassify-post.include"
+include "/tmp/etc/dscpclassify.d/post-include.nft"
