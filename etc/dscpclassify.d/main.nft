@@ -40,16 +40,16 @@ table inet dscpclassify {
     chain input {
         type filter hook input priority 2; policy accept
         iif "lo" return
-        ct mark and $ct_service == 0 ct direction original jump static_classify
-        ct mark and $ct_dynamic == $ct_dynamic jump dynamic_classify
+        ct mark & $ct_service == 0 ct direction original jump static_classify
+        ct mark & $ct_dynamic != 0 jump dynamic_classify
     }
 
     ## Classify and DSCP mark connections from/forwarded via the router
     chain postrouting {
         type filter hook postrouting priority 2; policy accept
         oif "lo" return
-        ct mark and $ct_service == 0 ct direction original jump static_classify
-        ct mark and $ct_dynamic == $ct_dynamic jump dynamic_classify
+        ct mark & $ct_service == 0 ct direction original jump static_classify
+        ct mark & $ct_dynamic != 0 jump dynamic_classify
 
         ## DSCP marking rules are added here by the init script
     }
@@ -61,7 +61,7 @@ table inet dscpclassify {
         meta l4proto != { tcp, udp } goto ct_set_cs0
 
         ## Set the dynamic conntrack bit on unclassified connections
-        ct mark set ct mark and $ct_unused or $ct_dynamic
+        ct mark set ct mark & $ct_unused | $ct_dynamic
     }
 
     chain dynamic_classify {
@@ -84,7 +84,7 @@ table inet dscpclassify {
 
     chain dynamic_classify_reply {
         ## Established connection
-        ct mark and $ct_processed != $ct_processed ct mark set ct mark or $ct_processed jump established_connection
+        ct mark & $ct_processed == 0 ct mark set ct mark | $ct_processed jump established_connection
 
         ## Assess threaded client connections (i.e. P2P) for classification
         ip daddr . th dport . meta l4proto @threaded_clients goto threaded_client_reply

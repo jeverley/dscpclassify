@@ -117,94 +117,94 @@ table inet dscpclassify {
 
     ## Set conntrack DSCP mark without modifying unused bits
     chain ct_set_cs0 {
-        ct mark set ct mark and $ct_unused or $cs0 or $ct_processed
+        ct mark set ct mark & $ct_unused | $cs0 | $ct_processed
     }
 
     chain ct_set_le {
-        ct mark set ct mark and $ct_unused or $lephb
+        ct mark set ct mark & $ct_unused | $lephb
     }
 
     chain ct_set_cs1 {
-        ct mark set ct mark and $ct_unused or $cs1
+        ct mark set ct mark & $ct_unused | $cs1
     }
 
     chain ct_set_af11 {
-        ct mark set ct mark and $ct_unused or $af11
+        ct mark set ct mark & $ct_unused | $af11
     }
 
     chain ct_set_af12 {
-        ct mark set ct mark and $ct_unused or $af12
+        ct mark set ct mark & $ct_unused | $af12
     }
 
     chain ct_set_af13 {
-        ct mark set ct mark and $ct_unused or $af13
+        ct mark set ct mark & $ct_unused | $af13
     }
 
     chain ct_set_cs2 {
-        ct mark set ct mark and $ct_unused or $cs2
+        ct mark set ct mark & $ct_unused | $cs2
     }
 
     chain ct_set_af21 {
-        ct mark set ct mark and $ct_unused or $af21
+        ct mark set ct mark & $ct_unused | $af21
     }
 
     chain ct_set_af22 {
-        ct mark set ct mark and $ct_unused or $af22
+        ct mark set ct mark & $ct_unused | $af22
     }
 
     chain ct_set_af23 {
-        ct mark set ct mark and $ct_unused or $af23
+        ct mark set ct mark & $ct_unused | $af23
     }
 
     chain ct_set_cs3 {
-        ct mark set ct mark and $ct_unused or $cs3
+        ct mark set ct mark & $ct_unused | $cs3
     }
 
     chain ct_set_af31 {
-        ct mark set ct mark and $ct_unused or $af31
+        ct mark set ct mark & $ct_unused | $af31
     }
 
     chain ct_set_af32 {
-        ct mark set ct mark and $ct_unused or $af32
+        ct mark set ct mark & $ct_unused | $af32
     }
 
     chain ct_set_af33 {
-        ct mark set ct mark and $ct_unused or $af33
+        ct mark set ct mark & $ct_unused | $af33
     }
 
     chain ct_set_cs4 {
-        ct mark set ct mark and $ct_unused or $cs4
+        ct mark set ct mark & $ct_unused | $cs4
     }
 
     chain ct_set_af41 {
-        ct mark set ct mark and $ct_unused or $af41
+        ct mark set ct mark & $ct_unused | $af41
     }
 
     chain ct_set_af42 {
-        ct mark set ct mark and $ct_unused or $af42
+        ct mark set ct mark & $ct_unused | $af42
     }
 
     chain ct_set_af43 {
-        ct mark set ct mark and $ct_unused or $af43
+        ct mark set ct mark & $ct_unused | $af43
     }
 
     chain ct_set_cs5 {
-        ct mark set ct mark and $ct_unused or $cs5
+        ct mark set ct mark & $ct_unused | $cs5
     }
 
     chain ct_set_va {
-        ct mark set ct mark and $ct_unused or $va
+        ct mark set ct mark & $ct_unused | $va
     }
 
     chain ct_set_ef {
-        ct mark set ct mark and $ct_unused or $ef
+        ct mark set ct mark & $ct_unused | $ef
     }
 
     chain ct_set_cs6 {
-        ct mark set ct mark and $ct_unused or $cs6
+        ct mark set ct mark & $ct_unused | $cs6
     }
 
     chain ct_set_cs7 {
-        ct mark set ct mark and $ct_unused or $cs7
+        ct mark set ct mark & $ct_unused | $cs7
     }
 }
