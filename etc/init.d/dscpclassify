@@ -43,7 +43,7 @@ delete_includes() {
 }
 
 delete_table() {
-	nft delete table inet dscpclassify 2>/dev/null
+	nft destroy table inet dscpclassify
 }
 
 cleanup_service() {
@@ -366,7 +366,7 @@ create_user_set() {
 	parse_set_flags || return 1
 
 	check_set_against_existing "$name" "$type" "$comment" "$size" "$flags" "$timeout" || {
-		[ "$?" = 1 ] && post_include "delete set inet dscpclassify $name"
+		[ "$?" = 1 ] && post_include "destroy set inet dscpclassify $name"
 		post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
 	}
 
