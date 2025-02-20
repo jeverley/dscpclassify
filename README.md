@@ -85,10 +85,10 @@ A working default configuration is provided with the service.
 | threaded_client_min_connections | The number of established connections for a client port to be considered threaded | uint | 10 |
 | threaded_service_min_bytes | The total bytes before a threaded service's connection is classed as high-throughput | uint | 1000000 |
 | threaded_service_min_connections | The number of established connections for a service to be considered threaded | uint | 3 |
-| lan_device | Manually specify devices that the service should treat as LAN | string |  |
-| lan_zone | Manually specify firewall zones that the service should treat as LAN | string | lan |
-| wan_device | Manually specify devices that the service should treat as WAN | string |  |
-| wan_zone | Manually specify firewall zones that the service should treat as WAN | string | wan |
+| lan_device | Manually specify devices that the service should treat as LAN | list: string |  |
+| lan_zone | Manually specify firewall zones that the service should treat as LAN | list: string | lan |
+| wan_device | Manually specify devices that the service should treat as WAN | list: string |  |
+| wan_zone | Manually specify firewall zones that the service should treat as WAN | list: string | wan |
 | wmm | When enabled the service will mark LAN bound packets with DSCP values respective of WMM (RFC-8325) | boolean |  0 |
 
 **Below is an example user rule:**
