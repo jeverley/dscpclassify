@@ -96,8 +96,8 @@ table inet dscpclassify {
     }
 
     chain dscp_set_va {
-        ip dscp set 44
-        ip6 dscp set 44
+        ip dscp set $va
+        ip6 dscp set $va
     }
 
     chain dscp_set_ef {
@@ -117,7 +117,7 @@ table inet dscpclassify {
 
     ## Set conntrack DSCP mark without modifying unused bits
     chain ct_set_cs0 {
-        ct mark set ct mark and $ct_unused or $cs0 or $ct_static
+        ct mark set ct mark and $ct_unused or $cs0 or $ct_processed
     }
 
     chain ct_set_le {

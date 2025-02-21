@@ -5,10 +5,22 @@ This should be used in conjunction with layer-cake SQM queue with ctinfo configu
 The dscpclassify service uses the last 8 bits of the conntrack mark (0x000000ff).
 
 # Classification modes
-The service supports three modes for classifying and DSCP marking connections outlined below.
+The service uses three methods for classifying and DSCP marking connections outlined below.
 
-### Dynamic classification
-Connections that do not match a pre-specified rule will be dynamically classified by the service via two mechanisms.
+### 1. User rules
+The service will first attempt to classify new connections using rules specified by the user in the config file.
+
+These follow a similar syntax to the OpenWrt firewall config and can match upon source/destination ports and IPs, firewall zones etc.
+
+The rules support the use of nft sets, which could be dynamically updated from external sources such as dnsmasq.
+
+### 2. Client DSCP hinting
+The service can be configured to apply the DSCP mark supplied by a non WAN originating client.
+
+This function ignores CS6 and CS7 classes to avoid abuse from inappropriately configed LAN clients such as IoT devices.
+
+### 3. Dynamic classification
+Connections that do not match a user rule or client hint will be dynamically classified by the service to reduce their priority.
 
 #### Multi-connection client port detection for detecting P2P traffic
 These connections are classified as Low Effort (LE) by default and therefore prioritised below Best Effort traffic when using the layer-cake qdisc.
@@ -17,18 +29,6 @@ These connections are classified as Low Effort (LE) by default and therefore pri
 These connections are classified as High-Throughput (AF13) by default and therefore prioritised as follows by cake:
   * diffserv3/4: Equal to besteffort (CS0) traffic.
   * diffserv8: Below besteffort (CS0) traffic, but above low effort (LE) traffic.
-
-### Client DSCP hinting
-The service can be configured to apply the DSCP mark supplied by a non WAN originating client.
-
-This function ignores CS6 and CS7 classes to avoid abuse from inappropriately configed LAN clients such as IoT devices.
-
-### User rules
-The service will first attempt to classify new connections using rules specified by the user in the config file.
-
-These follow a similar syntax to the OpenWrt firewall config and can match upon source/destination ports and IPs, firewall zones etc.
-
-The rules support the use of nft sets, which could be dynamically updated from external sources such as dsnmasq.
 
 ## Service architecture
 ![image](https://user-images.githubusercontent.com/46714706/188151111-9167e54d-482e-4584-b43b-0759e0ad7561.png)
