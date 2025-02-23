@@ -17,6 +17,7 @@ MAPS="/etc/dscpclassify.d/maps.nft"
 
 log() {
 	logger -t dscpclassify -p "daemon.$1" "$2"
+	[ "$DEBUG" = 1 ] && echo "$2"
 }
 
 create_debug_file() {
@@ -43,7 +44,7 @@ delete_includes() {
 }
 
 delete_table() {
-	nft destroy table inet dscpclassify
+	nft destroy table inet dscpclassify &>/dev/null
 }
 
 cleanup_service() {
@@ -619,19 +620,19 @@ create_threaded_client_rule() {
 		return 1
 	}
 
-	post_include "destroy set inet dscpclassify tc_detect"
+	check_set_exists tc_detect && post_include "destroy set inet dscpclassify tc_detect"
 	post_include "add rule inet dscpclassify established_connection meter tc_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((threaded_client_min_connections - 1))/minute } add @threaded_clients { ip daddr . th dport . meta l4proto timeout 30s }"
-	post_include "destroy set inet dscpclassify tc_detect6"
+	check_set_exists tc_detect6 && post_include "destroy set inet dscpclassify tc_detect6"
 	post_include "add rule inet dscpclassify established_connection meter tc_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((threaded_client_min_connections - 1))/minute } add @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
 
-	post_include "destroy set inet dscpclassify tc_orig_bulk"
+	check_set_exists tc_orig_bulk && post_include "destroy set inet dscpclassify tc_orig_bulk"
 	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients { ip saddr . th sport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
-	post_include "destroy set inet dscpclassify tc_orig_bulk6"
+	check_set_exists tc_orig_bulk6 && post_include "destroy set inet dscpclassify tc_orig_bulk6"
 	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
 
-	post_include "destroy set inet dscpclassify tc_reply_bulk"
+	check_set_exists tc_reply_bulk && post_include "destroy set inet dscpclassify tc_reply_bulk"
 	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients { ip daddr . th dport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
-	post_include "destroy set inet dscpclassify tc_reply_bulk6"
+	check_set_exists tc_reply_bulk6 && post_include "destroy set inet dscpclassify tc_reply_bulk6"
 	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } goto ct_set_$class_bulk"
 }
 
@@ -654,9 +655,9 @@ create_threaded_service_rule() {
 		return 1
 	}
 
-	post_include "destroy set inet dscpclassify ts_detect"
+	check_set_exists ts_detect && post_include "destroy set inet dscpclassify ts_detect"
 	post_include "add rule inet dscpclassify established_connection meter ts_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((threaded_service_min_connections - 1))/minute } add @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
-	post_include "destroy set inet dscpclassify ts_detect6"
+	check_set_exists ts_detect6 && post_include "destroy set inet dscpclassify ts_detect6"
 	post_include "add rule inet dscpclassify established_connection meter ts_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((threaded_service_min_connections - 1))/minute } add @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
 
 	post_include "add rule inet dscpclassify threaded_service ct original bytes < $threaded_service_min_bytes return"
@@ -774,8 +775,7 @@ setup() {
 
 	[ "$action" = "reload" ] && flush_table
 
-	nft_result="$(nft -f "$MAIN" 2>&1)"
-	nft -f "$MAIN" || {
+	nft_result="$(nft -f "$MAIN" 2>&1)" || {
 		log err "Failed to load main.nft with status: $?"
 		return 1
 	}
