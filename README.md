@@ -23,18 +23,18 @@ This function ignores CS6 and CS7 classes to avoid abuse from inappropriately co
 Connections that do not match a user rule or client hint will be dynamically classified by the service to reduce their priority.
 
 #### Multi-connection client port detection for detecting P2P traffic
-These connections are classified as Low Effort (LE) by default and therefore prioritised below Best Effort traffic when using the layer-cake qdisc.
+These connections are classified as **Low Effort (LE**) by default and therefore prioritised **below Best Effort** traffic when using the layer-cake qdisc.
 
 #### Multi-threaded service detection for identifying high-throughput downloads from services such as Steam
-These connections are classified as High-Throughput (AF13) by default and therefore prioritised as follows by cake:
-  * diffserv3/4: Equal to besteffort (CS0) traffic.
-  * diffserv8: Below besteffort (CS0) traffic, but above low effort (LE) traffic.
+These connections are classified as **High-Throughput (AF13**) by default and therefore prioritised as follows by cake:
+  * **diffserv3/4**: prioritised **equal to Best Effort (CS0**) traffic
+  * **diffserv8**: prioritised **below Best Effort (CS0**) traffic, but **above Low Effort (LE**) traffic
 
 ## Service architecture
 ![image](https://user-images.githubusercontent.com/46714706/188151111-9167e54d-482e-4584-b43b-0759e0ad7561.png)
 
 # Service installation
-1. To install the main dscpclassify service via command line you can use the following commands
+1. To install the main dscpclassify service via command line you can use the following commands:
 
 ```
 repo="https://raw.githubusercontent.com/jeverley/dscpclassify/main"
@@ -53,9 +53,9 @@ chmod +x "/etc/init.d/dscpclassify"
 /etc/init.d/dscpclassify enable
 /etc/init.d/dscpclassify start
 ```
-Ingress DSCP marking requires the SQM queue setup script 'layer_cake_ct.qos' and the package 'kmod-sched-ctinfo'.
+#### _Ingress DSCP marking requires the SQM queue setup script 'layer_cake_ct.qos' and the package 'kmod-sched-ctinfo'._
 
-2. To install the SQM setup script via command line you can use the following
+2. To install the SQM setup script via command line you can use the following commands:
 
 ```
 repo="https://raw.githubusercontent.com/jeverley/dscpclassify/main"
