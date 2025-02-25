@@ -93,8 +93,9 @@ fw_zone_dev() {
 	return 0
 }
 
-mklist() {
-	echo "$1" | tr '\n' ' ' | sed -e "s/^\s*/$3/" -e "s/\s*$/$3/" -e "s/\([^.]\)\s\+\([^.]\)/\1$3$2$3\2/g"
+format_list() {
+	local items="$1" delimiter="$2" encapsulator="$3"
+	echo "$items" | tr '\n' ' ' | sed -e "s/^\s*/${encapsulator}/" -e "s/\s*$/${encapsulator}/" -e "s/\([^.]\)\s\+\([^.]\)/\1${encapsulator}${delimiter}${encapsulator}\2/g"
 }
 
 check_class() {
@@ -292,7 +293,7 @@ parse_set_flags() {
 		flags="$flags timeout"
 	}
 
-	[ -n "$flags" ] && flags="$(mklist "$flags" ", ")"
+	[ -n "$flags" ] && flags="$(format_list "$flags" ", ")"
 
 	return 0
 }
@@ -330,7 +331,7 @@ parse_set_type() {
 			;;
 		esac
 	done
-	type=$(mklist "$type" " . ")
+	type=$(format_list "$type" " . ")
 
 	return 0
 }
@@ -373,29 +374,29 @@ create_user_set() {
 		post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
 	}
 
-	[ -n "$entry$element" ] && post_include "add element inet dscpclassify $name { $(mklist "$entry $element" ", ") }"
+	[ -n "$entry$element" ] && post_include "add element inet dscpclassify $name { $(format_list "$entry $element" ", ") }"
 
 	return 0
 }
 
 rule_l4proto() {
 	[ -n "$1" ] || return 0
-	l4proto="meta l4proto { $(mklist "$1" ", ") }"
+	l4proto="meta l4proto { $(format_list "$1" ", ") }"
 }
 
 rule_nfproto() {
 	[ -n "$1" ] || return 0
-	nfproto="meta nfproto { $(mklist "$1" ", ") }"
+	nfproto="meta nfproto { $(format_list "$1" ", ") }"
 }
 
 rule_oifname() {
 	[ -n "$1" ] || return 0
-	oifname="oifname { $(mklist "$1" ", " "\"") }"
+	oifname="oifname { $(format_list "$1" ", " "\"") }"
 }
 
 rule_iifname() {
 	[ -n "$1" ] || return 0
-	iifname="iifname { $(mklist "$1" ", " "\"") }"
+	iifname="iifname { $(format_list "$1" ", " "\"") }"
 }
 
 rule_zone() {
@@ -441,8 +442,8 @@ rule_port() {
 		return 1
 	}
 
-	[ -n "$port" ] && rule="th $xport { $(mklist "$port" ", ") }"
-	[ -n "$port_negate" ] && rule="$rule th $xport != { $(mklist "$port_negate" ", ") }"
+	[ -n "$port" ] && rule="th $xport { $(format_list "$port" ", ") }"
+	[ -n "$port_negate" ] && rule="$rule th $xport != { $(format_list "$port_negate" ", ") }"
 
 	eval "$xport"='$rule'
 	return 0
@@ -489,11 +490,11 @@ rule_addr() {
 		return 1
 	fi
 
-	[ -n "$ipv4" ] && rule="ip $xaddr { $(mklist "$ipv4" ", ") }"
-	[ -n "$ipv4_negate" ] && rule="$rule ip $xaddr != { $(mklist "$ipv4_negate" ", ") }"
+	[ -n "$ipv4" ] && rule="ip $xaddr { $(format_list "$ipv4" ", ") }"
+	[ -n "$ipv4_negate" ] && rule="$rule ip $xaddr != { $(format_list "$ipv4_negate" ", ") }"
 
-	[ -n "$ipv6" ] && rule6="ip6 $xaddr { $(mklist "$ipv6" ", ") }"
-	[ -n "$ipv6_negate" ] && rule6="$rule6 ip6 $xaddr != { $(mklist "$ipv6_negate" ", ") }"
+	[ -n "$ipv6" ] && rule6="ip6 $xaddr { $(format_list "$ipv6" ", ") }"
+	[ -n "$ipv6_negate" ] && rule6="$rule6 ip6 $xaddr != { $(format_list "$ipv6_negate" ", ") }"
 
 	[ -n "$ipset$ipset_negate" ] && case "$3" in
 	ipv4)
@@ -694,8 +695,8 @@ create_flush_actions() {
 create_pre_include() {
 	rm -f "$PRE_INCLUDE"
 
-	pre_include "define lan = { $(mklist "$lan" ", " "\"") }"
-	pre_include "define wan = { $(mklist "$wan" ", " "\"") }"
+	pre_include "define lan = { $(format_list "$lan" ", " "\"") }"
+	pre_include "define wan = { $(format_list "$wan" ", " "\"") }"
 
 	[ "$action" = "reload" ] && create_flush_actions 
 	pre_include "add table inet dscpclassify"
