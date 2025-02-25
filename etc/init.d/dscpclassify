@@ -804,12 +804,7 @@ reload_service() {
 		echo "The dscpclassify service is not loaded"
 		return 1
 	}
-
-	setup || {
-		setup_failed
-		return 1
-	}
-	cleanup_setup
+	start_service
 }
 
 stop_service() {
