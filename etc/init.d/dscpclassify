@@ -19,7 +19,7 @@ nft_result=""
 log() {
 	logger -t dscpclassify -p "daemon.$1" "$2"
 	case "$1" in
-	warning | err) echo "$2" ;;
+	info | warning | err) echo "$2" ;;
 	esac
 }
 
@@ -756,7 +756,7 @@ setup() {
 	config_get_bool debug global debug "$debug"
 
 	get_zones || {
-		log notice "Deferring ${action} because lan/wan firewall zones are unavailable"
+		log info "Deferring ${action} because lan/wan firewall zones are unavailable"
 		return 0
 	}
 
