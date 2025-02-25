@@ -162,6 +162,10 @@ check_set_name() {
 		log warning "Sets cannot overwrite built-in dscpclassify sets"
 		return 1
 		;;
+	tc_detect | tc_detect6 | tc_orig_bulk | tc_orig_bulk6 | tc_reply_bulk | tc_reply_bulk6 | ts_detect | ts_detect6)
+		log warning "Sets cannot overwrite built-in dscpclassify meter sets"
+		return 1
+		;;
 	esac
 
 	return 0
