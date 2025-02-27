@@ -789,8 +789,6 @@ setup() {
 		log err "Failed to load main.nft with status: $?"
 		return 1
 	}
-
-	log notice "Service ${action}ed"
 	return 0
 }
 
@@ -807,6 +805,7 @@ start_service() {
 		return 1
 	}
 	cleanup_setup
+	log notice "Service ${action}ed"
 	return 0
 }
 
