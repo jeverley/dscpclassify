@@ -37,6 +37,7 @@ log() {
 }
 
 create_debug_file() {
+	# shellcheck disable=SC2154
 	{
 		echo "dscpclassify ${action}: $(date)"
 		echo $'\n'"<--- ${PRE_INCLUDE} --->"
@@ -81,56 +82,25 @@ post_include() {
 	echo "$1" >>"$POST_INCLUDE"
 }
 
-list_append() {
-	list="$list"$'\n'"$1"
-}
-
 config_foreach_reverse() {
+	local function="$1" type="$2"
 	local list
 
-	config_foreach list_append "$2"
+	# shellcheck disable=SC2329
+	list_append() {
+		list="$list"$'\n'"$1"
+	}
+	config_foreach list_append "$type"
 	list=$(echo "$list" | sort -r)
-
+	
+	shift 2
 	for config in $list; do
-		"$1" "$config" "$3"
+		"$function" "$config" "$@"
 	done
 }
 
-fw_zone_dev() {
-	local dev
-
-	dev="$(fw4 -q zone "$1" | sort -u)"
-	[ -n "$dev" ] || return 1
-
-	echo "$dev"
-}
-
-format_list() {
-	local items="$1" delimiter="$2" encapsulator="$3"
-	echo "$items" | tr '\n' ' ' | sed -e "s/^\s*/${encapsulator}/" -e "s/\s*$/${encapsulator}/" -e "s/\([^.]\)\s\+\([^.]\)/\1${encapsulator}${delimiter}${encapsulator}\2/g"
-}
-
-check_class() {
-	local class
-
-	class="$(echo "$1" | tr 'A-Z' 'a-z')"
-
-	case "$class" in
-	le) true ;;  # RFC-8622
-	be | df) class="cs0" ;;
-	cs0 | cs1 | af11 | af12 | af13 | cs2 | af21 | af22 | af23 | cs3 | af31 | af32 | af33 | cs4 | af41 | af42 | af43 | cs5 | va | ef | cs6 | cs7) true ;;
-	*) return 1 ;;
-	esac
-
-	echo "$class"
-}
-
-check_duration() {
-	echo "$1" | grep -q -E -e "^([1-9][0-9]*[smhd]){1,4}$"
-}
-
 convert_duration_to_seconds() {
-	local duration seconds
+	local seconds
 
 	duration="$(echo "$1" | sed -e 's/\([dhms]\)/\1 /g')"
 	for i in $duration; do
@@ -146,11 +116,43 @@ convert_duration_to_seconds() {
 	echo "$seconds"
 }
 
+dscp_class() {
+	local class="$1"
+
+	class="$(echo "$class" | tr 'A-Z' 'a-z')"
+	case "$class" in
+	le) true ;;  # RFC-8622
+	be | df) class="cs0" ;;
+	cs0 | cs1 | af11 | af12 | af13 | cs2 | af21 | af22 | af23 | cs3 | af31 | af32 | af33 | cs4 | af41 | af42 | af43 | cs5 | va | ef | cs6 | cs7) true ;;
+	*) return 1 ;;
+	esac
+
+	echo "$class"
+}
+
+format_list() {
+	local items="$1" delimiter="$2" encapsulator="$3"
+
+	echo "$items" | tr '\n' ' ' | sed -e "s/^\s*/${encapsulator}/" -e "s/\s*$/${encapsulator}/" -e "s/\([^.]\)\s\+\([^.]\)/\1${encapsulator}${delimiter}${encapsulator}\2/g"
+}
+
+fw_zone_devices() {
+	local dev
+
+	dev="$(fw4 -q zone "$1" | sort -u)"
+	[ -n "$dev" ] || return 1
+
+	echo "$dev"
+}
+
+check_duration() {
+	echo "$1" | grep -q -E -e "^([1-9][0-9]*[smhd]){1,4}$"
+}
+
 check_family() {
 	case "$1" in
 	ipv4 | ipv6) return 0 ;;
 	esac
-
 	return 1
 }
 
@@ -178,7 +180,6 @@ check_set_name() {
 		return 1
 		;;
 	esac
-
 	return 0
 }
 
@@ -189,7 +190,6 @@ check_set_size() {
 		log warning "Set contains an invalid maxelem option"
 		return 1
 	fi
-
 	return 0
 }
 
@@ -241,6 +241,7 @@ parse_rule_ports() {
 
 parse_rule_ips() {
 	for i in $1; do
+		# ipv4 address
 		echo "$i" | grep -q -E -e "^!?(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))(/([0-9]|[12][0-9]|3[0-2]))?$" && {
 			case "$i" in
 			"!"*) ipv4_negate="$ipv4_negate ${i#*!}" ;;
@@ -249,6 +250,7 @@ parse_rule_ips() {
 			continue
 		}
 
+		# ipv6 address
 		echo "$i" | grep -q -E -e "^!?(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)(/[0-9]{1,3})?$" && {
 			case "$i" in
 			"!"*) ipv6_negate="$ipv6_negate ${i#*!}" ;;
@@ -257,6 +259,7 @@ parse_rule_ips() {
 			continue
 		}
 
+		# set name
 		echo "$i" | grep -q -E -e "^!?@\w+$" && {
 			case "$i" in
 			"!"*) ipset_negate="$ipset_negate ${i#*!}" ;;
@@ -264,6 +267,8 @@ parse_rule_ips() {
 			esac
 			continue
 		}
+
+		log warning "Invalid ip/set name: $i"
 		return 1
 	done
 }
@@ -415,7 +420,7 @@ rule_zone() {
 
 	[ -n "$2" ] || return 0
 
-	device="$(fw_zone_dev "$2")" || {
+	device="$(fw_zone_devices "$2")" || {
 		log warning "Rule contains an invalid $1 zone"
 		return 1
 	}
@@ -552,7 +557,7 @@ rule_verdict() {
 		log warning "Rule is missing the DSCP class option"
 		return 1
 	}
-	class="$(check_class "$class")" || {
+	class="$(dscp_class "$class")" || {
 		log warning "Rule contains an invalid DSCP class"
 		return 1
 	}
@@ -628,7 +633,7 @@ create_threaded_client_rule() {
 		return 1
 	fi
 	config_get class_bulk global class_bulk $CLASS_BULK
-	class_bulk="$(check_class "$class_bulk")" || {
+	class_bulk="$(dscp_class "$class_bulk")" || {
 		log err "Global option class_bulk contains an invalid DSCP class"
 		return 1
 	}
@@ -663,7 +668,7 @@ create_threaded_service_rule() {
 		return 1
 	}
 	config_get class_high_throughput global class_high_throughput $CLASS_HIGH_THROUGHPUT
-	class_high_throughput="$(check_class "$class_high_throughput")" || {
+	class_high_throughput="$(dscp_class "$class_high_throughput")" || {
 		log err "Global option class_high_throughput contains an invalid DSCP class"
 		return 1
 	}
@@ -688,7 +693,7 @@ create_dscp_mark_rule() {
 	local wmm
 
 	config_get_bool wmm global wmm $WMM
-	
+
 	[ "$wmm" = 1 ] && post_include "add rule inet dscpclassify postrouting oifname \$lan ct mark & \$ct_dscp vmap @ct_wmm"
 	post_include "add rule inet dscpclassify postrouting ct mark & \$ct_dscp vmap @ct_dscp"
 }
@@ -741,7 +746,7 @@ get_zones() {
 	config_get lan_zones global lan_zone "lan"
 
 	for i in $lan_zones; do
-		dev="$(fw_zone_dev "$i")" && lan="${lan:+$lan }$dev"
+		dev="$(fw_zone_devices "$i")" && lan="${lan:+$lan }$dev"
 	done
 	[ -n "$lan" ] || return 1
 
@@ -749,7 +754,7 @@ get_zones() {
 	config_get wan_zones global wan_zone "wan"
 
 	for i in $wan_zones; do
-		dev="$(fw_zone_dev "$i")" && wan="${wan:+$wan }$dev"
+		dev="$(fw_zone_devices "$i")" && wan="${wan:+$wan }$dev"
 	done
 	[ -n "$wan" ] || return 1
 }
