@@ -99,38 +99,6 @@ config_foreach_reverse() {
 	done
 }
 
-format_list() {
-	local items="$1" delimiter="$2" encapsulator="$3"
-	echo "$items" | tr '\n' ' ' | sed -e "s/^\s*/${encapsulator}/" -e "s/\s*$/${encapsulator}/" -e "s/\([^.]\)\s\+\([^.]\)/\1${encapsulator}${delimiter}${encapsulator}\2/g"
-}
-
-fw_zone_devices() {
-	local dev
-
-	dev="$(fw4 -q zone "$1" | sort -u)"
-	[ -n "$dev" ] || return 1
-
-	echo "$dev"
-}
-
-dscp_class() {
-	local class="$1"
-
-	class="$(echo "$class" | tr 'A-Z' 'a-z')"
-	case "$class" in
-	le) true ;;  # RFC-8622
-	be | df) class="cs0" ;;
-	cs0 | cs1 | af11 | af12 | af13 | cs2 | af21 | af22 | af23 | cs3 | af31 | af32 | af33 | cs4 | af41 | af42 | af43 | cs5 | va | ef | cs6 | cs7) true ;;
-	*) return 1 ;;
-	esac
-
-	echo "$class"
-}
-
-check_duration() {
-	echo "$1" | grep -q -E -e "^([1-9][0-9]*[smhd]){1,4}$"
-}
-
 convert_duration_to_seconds() {
 	local seconds
 
@@ -148,11 +116,43 @@ convert_duration_to_seconds() {
 	echo "$seconds"
 }
 
+dscp_class() {
+	local class="$1"
+
+	class="$(echo "$class" | tr 'A-Z' 'a-z')"
+	case "$class" in
+	le) true ;;  # RFC-8622
+	be | df) class="cs0" ;;
+	cs0 | cs1 | af11 | af12 | af13 | cs2 | af21 | af22 | af23 | cs3 | af31 | af32 | af33 | cs4 | af41 | af42 | af43 | cs5 | va | ef | cs6 | cs7) true ;;
+	*) return 1 ;;
+	esac
+
+	echo "$class"
+}
+
+format_list() {
+	local items="$1" delimiter="$2" encapsulator="$3"
+
+	echo "$items" | tr '\n' ' ' | sed -e "s/^\s*/${encapsulator}/" -e "s/\s*$/${encapsulator}/" -e "s/\([^.]\)\s\+\([^.]\)/\1${encapsulator}${delimiter}${encapsulator}\2/g"
+}
+
+fw_zone_devices() {
+	local dev
+
+	dev="$(fw4 -q zone "$1" | sort -u)"
+	[ -n "$dev" ] || return 1
+
+	echo "$dev"
+}
+
+check_duration() {
+	echo "$1" | grep -q -E -e "^([1-9][0-9]*[smhd]){1,4}$"
+}
+
 check_family() {
 	case "$1" in
 	ipv4 | ipv6) return 0 ;;
 	esac
-
 	return 1
 }
 
@@ -180,7 +180,6 @@ check_set_name() {
 		return 1
 		;;
 	esac
-
 	return 0
 }
 
@@ -191,7 +190,6 @@ check_set_size() {
 		log warning "Set contains an invalid maxelem option"
 		return 1
 	fi
-
 	return 0
 }
 
@@ -243,6 +241,7 @@ parse_rule_ports() {
 
 parse_rule_ips() {
 	for i in $1; do
+		# ipv4 address
 		echo "$i" | grep -q -E -e "^!?(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))(/([0-9]|[12][0-9]|3[0-2]))?$" && {
 			case "$i" in
 			"!"*) ipv4_negate="$ipv4_negate ${i#*!}" ;;
@@ -251,6 +250,7 @@ parse_rule_ips() {
 			continue
 		}
 
+		# ipv6 address
 		echo "$i" | grep -q -E -e "^!?(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)(/[0-9]{1,3})?$" && {
 			case "$i" in
 			"!"*) ipv6_negate="$ipv6_negate ${i#*!}" ;;
@@ -259,6 +259,7 @@ parse_rule_ips() {
 			continue
 		}
 
+		# set name
 		echo "$i" | grep -q -E -e "^!?@\w+$" && {
 			case "$i" in
 			"!"*) ipset_negate="$ipset_negate ${i#*!}" ;;
@@ -266,6 +267,8 @@ parse_rule_ips() {
 			esac
 			continue
 		}
+
+		log warning "Invalid ip/set name: $i"
 		return 1
 	done
 }
