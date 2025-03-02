@@ -682,9 +682,9 @@ create_dscp_mark_rule() {
 	local wmm
 
 	config_get_bool wmm global wmm 0
-	[ "$wmm" = 1 ] && post_include "add rule inet dscpclassify postrouting oifname \$lan ct mark and (\$ct_dscp | \$ct_processed) vmap @ct_wmm"
+	[ "$wmm" = 1 ] && post_include "add rule inet dscpclassify postrouting oifname \$lan ct mark & \$ct_dscp vmap @ct_wmm"
 
-	post_include "add rule inet dscpclassify postrouting ct mark and (\$ct_dscp | \$ct_processed) vmap @ct_dscp"
+	post_include "add rule inet dscpclassify postrouting ct mark & \$ct_dscp vmap @ct_dscp"
 }
 
 create_flush_actions() {
