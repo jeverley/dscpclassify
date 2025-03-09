@@ -19,6 +19,7 @@ MAPS="/etc/dscpclassify.d/maps.nft"
 CLASS_BULK=le
 CLASS_HIGH_THROUGHPUT=af13
 CLIENT_HINTS=1
+DYNAMIC_CLASSIFY=1
 THREADED_CLIENT_MIN_BYTES=10000
 THREADED_CLIENT_MIN_CONNECTIONS=10
 THREADED_SERVICE_MIN_BYTES=1000000
@@ -597,25 +598,36 @@ create_user_rule() {
 	rule_verdict "$class" || return 1
 
 	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $dport $iifname $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+		post_include "insert rule inet dscpclassify rule_classify $nfproto $l4proto $oifname $dport $iifname $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 		return 0
 	}
 	[ -n "$daddr$saddr" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+		post_include "insert rule inet dscpclassify rule_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 	}
 	[ -n "$daddr6$saddr6" ] && {
-		post_include "insert rule inet dscpclassify static_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+		post_include "insert rule inet dscpclassify rule_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 	}
 	return 0
 }
 
-create_client_hints_rule() {
+create_client_hints_jump() {
 	local client_hints
 
 	config_get_bool client_hints global client_hints $CLIENT_HINTS
 	[ "$client_hints" = 1 ] || return 0
 
-	post_include "insert rule inet dscpclassify dynamic_classify ct direction original iifname != \$wan jump client_classify"
+	post_include "add rule inet dscpclassify input ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump client_classify"
+	post_include "add rule inet dscpclassify postrouting ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump client_classify"
+}
+
+create_dynamic_classify_jump() {
+	local dynamic_classify
+
+	config_get_bool dynamic_classify global dynamic_classify $DYNAMIC_CLASSIFY
+	[ "$dynamic_classify" = 1 ] || return 0
+
+	post_include "add rule inet dscpclassify input ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump dynamic_classify"
+	post_include "add rule inet dscpclassify postrouting ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump dynamic_classify"
 }
 
 create_threaded_client_rule() {
@@ -636,21 +648,22 @@ create_threaded_client_rule() {
 		log err "Global option class_bulk contains an invalid DSCP class"
 		return 1
 	}
+	[ "$class_bulk" = "le" ] && class_bulk=lephb
 
 	check_set_exists tc_detect && post_include "destroy set inet dscpclassify tc_detect"
-	post_include "add rule inet dscpclassify established_connection meter tc_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((threaded_client_min_connections - 1))/minute } add @threaded_clients { ip daddr . th dport . meta l4proto timeout 30s }"
 	check_set_exists tc_detect6 && post_include "destroy set inet dscpclassify tc_detect6"
+	post_include "add rule inet dscpclassify established_connection meter tc_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((threaded_client_min_connections - 1))/minute } add @threaded_clients { ip daddr . th dport . meta l4proto timeout 30s }"
 	post_include "add rule inet dscpclassify established_connection meter tc_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((threaded_client_min_connections - 1))/minute } add @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
 
 	check_set_exists tc_orig_bulk && post_include "destroy set inet dscpclassify tc_orig_bulk"
-	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients { ip saddr . th sport . meta l4proto timeout 5m } goto ct_set_${class_bulk}"
 	check_set_exists tc_orig_bulk6 && post_include "destroy set inet dscpclassify tc_orig_bulk6"
-	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } goto ct_set_${class_bulk}"
+	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients { ip saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class_bulk} return"
+	post_include "add rule inet dscpclassify threaded_client meter tc_orig_bulk6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class_bulk} return"
 
 	check_set_exists tc_reply_bulk && post_include "destroy set inet dscpclassify tc_reply_bulk"
-	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients { ip daddr . th dport . meta l4proto timeout 5m } goto ct_set_${class_bulk}"
 	check_set_exists tc_reply_bulk6 && post_include "destroy set inet dscpclassify tc_reply_bulk6"
-	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } goto ct_set_${class_bulk}"
+	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients { ip daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class_bulk} return"
+	post_include "add rule inet dscpclassify threaded_client_reply meter tc_reply_bulk6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((threaded_client_min_bytes - 1)) bytes/hour } update @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class_bulk} return"
 }
 
 create_threaded_service_rule() {
@@ -671,21 +684,22 @@ create_threaded_service_rule() {
 		log err "Global option class_high_throughput contains an invalid DSCP class"
 		return 1
 	}
+	[ "$class_high_throughput" = "le" ] && class_high_throughput=lephb
 
 	check_set_exists ts_detect && post_include "destroy set inet dscpclassify ts_detect"
-	post_include "add rule inet dscpclassify established_connection meter ts_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((threaded_service_min_connections - 1))/minute } add @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
 	check_set_exists ts_detect6 && post_include "destroy set inet dscpclassify ts_detect6"
+	post_include "add rule inet dscpclassify established_connection meter ts_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((threaded_service_min_connections - 1))/minute } add @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
 	post_include "add rule inet dscpclassify established_connection meter ts_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((threaded_service_min_connections - 1))/minute } add @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
 
 	post_include "add rule inet dscpclassify threaded_service ct original bytes < $threaded_service_min_bytes return"
 	post_include "add rule inet dscpclassify threaded_service update @threaded_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"
 	post_include "add rule inet dscpclassify threaded_service update @threaded_services6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }"
-	post_include "add rule inet dscpclassify threaded_service goto ct_set_${class_high_throughput}"
+	post_include "add rule inet dscpclassify threaded_service ct mark set ct mark | \$${class_high_throughput} return"
 
 	post_include "add rule inet dscpclassify threaded_service_reply ct reply bytes < $threaded_service_min_bytes return"
 	post_include "add rule inet dscpclassify threaded_service_reply update @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }"
 	post_include "add rule inet dscpclassify threaded_service_reply update @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }"
-	post_include "add rule inet dscpclassify threaded_service_reply goto ct_set_${class_high_throughput}"
+	post_include "add rule inet dscpclassify threaded_service_reply ct mark set ct mark | \$${class_high_throughput} return"
 }
 
 create_dscp_mark_rule() {
@@ -730,7 +744,8 @@ create_post_include() {
 	config_foreach create_user_set ipset # section name consistent with fw4
 	config_foreach_reverse create_user_rule rule
 
-	create_client_hints_rule || return 1
+	create_client_hints_jump || return 1
+	create_dynamic_classify_jump || return 1
 	create_threaded_client_rule || return 1
 	create_threaded_service_rule || return 1
 
