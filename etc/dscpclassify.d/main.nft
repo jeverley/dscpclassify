@@ -79,46 +79,18 @@ table inet dscpclassify {
         ## Handle connection replies
         ct direction reply goto dynamic_classify_reply
 
-        ## Assess threaded client connections (i.e. P2P) for classification
-        ip saddr . th sport . meta l4proto @threaded_clients goto threaded_client
-        ip6 saddr . th sport . meta l4proto @threaded_clients6 goto threaded_client
-
-        ## Assess threaded service connections for classification
-        ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto @threaded_services goto threaded_service
-        ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto @threaded_services6 goto threaded_service
+        ## Dynamic rules are added here by the init script
     }
 
     chain dynamic_classify_reply {
         ## Established connection
         ct mark & $ct_processed == 0 ct mark set ct mark | $ct_processed jump established_connection
 
-        ## Assess threaded client connections (i.e. P2P) for classification
-        ip daddr . th dport . meta l4proto @threaded_clients goto threaded_client_reply
-        ip6 daddr . th dport . meta l4proto @threaded_clients6 goto threaded_client_reply
-
-        ## Assess threaded service connections for classification
-        ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto @threaded_services goto threaded_service_reply
-        ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto @threaded_services6 goto threaded_service_reply
+        ## Dynamic rules are added here by the init script
     }
 
     chain established_connection {
-        ## Threaded service and multi-connection client rules are added here by the init script
-    }
-
-    chain threaded_client {
-        ## Threaded client rules are added here by the init script
-    }
-
-    chain threaded_client_reply {
-        ## Threaded client rules are added here by the init script
-    }
-
-    chain threaded_service {
-        ## Threaded service rules are added here by the init script
-    }
-
-    chain threaded_service_reply {
-        ## Threaded service rules are added here by the init script
+        ## Dynamic connection detection rules are added here by the init script
     }
 }
 
