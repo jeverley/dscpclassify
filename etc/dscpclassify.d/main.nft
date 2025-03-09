@@ -64,7 +64,15 @@ table inet dscpclassify {
         ct mark set ct mark & $ct_unused | $ct_dynamic
     }
 
+    chain client_classify {
+        ## Assess client specified DSCP mark for classification
+	    ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct
+	    ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct
+    }
+
     chain dynamic_classify {
+        ## The client hint classification jump is inserted here if enabled
+
         ## Unreplied connections are ignored by dynamic classification logic
         ct status and seen-reply != seen-reply return
 
