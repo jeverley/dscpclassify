@@ -115,7 +115,7 @@ table inet dscpclassify {
         ip6 dscp set cs7
     }
 
-    ## Set conntrack DSCP mark without modifying unused bits
+    ## Set conntrack DSCP class without modifying unused bits
     chain ct_set_cs0 {
         ct mark set ct mark & $ct_unused | $cs0 | $ct_processed
     }

@@ -40,21 +40,23 @@ table inet dscpclassify {
     chain input {
         type filter hook input priority 2; policy accept
         iif "lo" return
-        ct mark & $ct_service == 0 ct direction original jump static_classify
-        ct mark & $ct_dynamic != 0 jump dynamic_classify
+        ct mark & $ct_service == 0 ct direction original jump rule_classify
+        # Client hints jump added here by the init script if enabled
+        # Dynamic classify jump added here by the init script if enabled
     }
 
     ## Classify and DSCP mark connections from/forwarded via the router
     chain postrouting {
         type filter hook postrouting priority 2; policy accept
         oif "lo" return
-        ct mark & $ct_service == 0 ct direction original jump static_classify
-        ct mark & $ct_dynamic != 0 jump dynamic_classify
+        ct mark & $ct_service == 0 ct direction original jump rule_classify
+        # Client hints jump added here by the init script if enabled
+        # Dynamic classify jump added here by the init script if enabled
 
         ## DSCP marking rules are added here by the init script
     }
 
-    chain static_classify {
+    chain rule_classify {
         ## User defined rules in '/etc/config/dscpclassify' are inserted here by the init script
 
         ## Non TCP/UDP unclassified connections are Best Effort (CS0)
@@ -65,14 +67,12 @@ table inet dscpclassify {
     }
 
     chain client_classify {
-        ## Assess client specified DSCP mark for classification
-	    ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct
-	    ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct
+        ## Assess client DSCP mark for classification
+        ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct
+        ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct
     }
 
     chain dynamic_classify {
-        ## The client hint classification jump is inserted here if enabled
-
         ## Unreplied connections are ignored by dynamic classification logic
         ct status and seen-reply != seen-reply return
 
@@ -86,8 +86,6 @@ table inet dscpclassify {
         ## Assess threaded service connections for classification
         ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto @threaded_services goto threaded_service
         ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto @threaded_services6 goto threaded_service
-
-        ## Dynamic rules are added here by the init script
     }
 
     chain dynamic_classify_reply {
@@ -101,8 +99,6 @@ table inet dscpclassify {
         ## Assess threaded service connections for classification
         ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto @threaded_services goto threaded_service_reply
         ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto @threaded_services6 goto threaded_service_reply
-
-        ## Dynamic rules are added here by the init script
     }
 
     chain established_connection {
