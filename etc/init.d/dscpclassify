@@ -372,8 +372,8 @@ create_user_set() {
 	config_get_bool flag_interval "$1" interval
 
 	config_get entry "$1" entry
-	config_get element "$1" element # depreciate for naming consistency with fw4 (entry)
-	[ -n "$element" ] && log warning "The user set 'element' option is being depreciated in favour of 'entry' for consistency with fw4"
+	config_get element "$1" element # deprecate for naming consistency with fw4 (entry)
+	[ -n "$element" ] && log warning "The user set 'element' option is being deprecated in favour of 'entry' for consistency with fw4"
 
 	check_set_name "$name" || return 1
 	check_set_size "$size" || return 1
@@ -610,7 +610,7 @@ create_user_rule() {
 	return 0
 }
 
-create_client_hints_jump() {
+create_client_classify_jump() {
 	local client_hints
 
 	config_get_bool client_hints global client_hints $CLIENT_HINTS
@@ -633,10 +633,19 @@ create_dynamic_classify_jump() {
 destroy_threaded_client_rules() {
 	post_include "destroy chain inet dscpclassify threaded_client"
 	post_include "destroy chain inet dscpclassify threaded_client_reply"
+
+	check_set_exists threaded_clients && post_include "destroy set inet dscpclassify threaded_clients"
+	check_set_exists threaded_clients6 && post_include "destroy set inet dscpclassify threaded_clients6"
 }
 
 create_threaded_client_rules() {
 	local class_bulk threaded_client_min_bytes threaded_client_min_connections
+
+	config_get_bool dynamic_classify global dynamic_classify $DYNAMIC_CLASSIFY
+	[ "$dynamic_classify" = 1 ] || {
+		destroy_threaded_client_rules
+		return 0
+	}
 
 	config_get threaded_client_min_connections global threaded_client_min_connections $THREADED_CLIENT_MIN_CONNECTIONS
 	if ! check_uint "$threaded_client_min_connections" || [ "$threaded_client_min_connections" -lt 2 ]; then
@@ -654,15 +663,9 @@ create_threaded_client_rules() {
 		return 1
 	}
 
-	# Destroy up old meter sets
-	check_set_exists tc_orig_bulk && post_include "destroy set inet dscpclassify tc_orig_bulk"
-	check_set_exists tc_orig_bulk6 && post_include "destroy set inet dscpclassify tc_orig_bulk6"
-	check_set_exists tc_reply_bulk && post_include "destroy set inet dscpclassify tc_reply_bulk"
-	check_set_exists tc_reply_bulk6 && post_include "destroy set inet dscpclassify tc_reply_bulk6"
-
 	case "$class_bulk" in
 	le) class_bulk=lephb ;;  # RFC-8622
-	cs0) destroy_threaded_client_rules; return 0 ;; # Skip rule creation
+	cs0) destroy_threaded_client_rules; return 0 ;; # Skip rule creation as CS0 is the default
 	esac
 
 	# Create sets for matching threaded clients
@@ -670,8 +673,6 @@ create_threaded_client_rules() {
 	check_set_exists threaded_clients6 || post_include "add set inet dscpclassify threaded_clients6 { type ipv6_addr . inet_service . inet_proto; flags timeout; }"
 
 	# Create threaded client detection rules
-	check_set_exists tc_detect && post_include "destroy set inet dscpclassify tc_detect"
-	check_set_exists tc_detect6 && post_include "destroy set inet dscpclassify tc_detect6"
 	post_include "add rule inet dscpclassify established_connection meter tc_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((threaded_client_min_connections - 1))/minute } add @threaded_clients { ip daddr . th dport . meta l4proto timeout 30s }"
 	post_include "add rule inet dscpclassify established_connection meter tc_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((threaded_client_min_connections - 1))/minute } add @threaded_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
 
@@ -695,10 +696,19 @@ create_threaded_client_rules() {
 destroy_threaded_service_rules() {
 	post_include "destroy chain inet dscpclassify threaded_service"
 	post_include "destroy chain inet dscpclassify threaded_service_reply"
+
+	check_set_exists threaded_services && post_include "destroy set inet dscpclassify threaded_services"
+	check_set_exists threaded_services6 && post_include "destroy set inet dscpclassify threaded_services6"
 }
 
 create_threaded_service_rules() {
 	local class_high_throughput threaded_service_min_bytes threaded_service_min_connections
+
+	config_get_bool dynamic_classify global dynamic_classify $DYNAMIC_CLASSIFY
+	[ "$dynamic_classify" = 1 ] || {
+		destroy_threaded_service_rules
+		return 0
+	}
 
 	config_get threaded_service_min_connections global threaded_service_min_connections $THREADED_SERVICE_MIN_CONNECTIONS
 	if ! check_uint "$threaded_service_min_connections" || [ "$threaded_service_min_connections" -lt 2 ]; then
@@ -716,13 +726,9 @@ create_threaded_service_rules() {
 		return 1
 	}
 
-	# Destroy up old meter sets
-	check_set_exists ts_detect && post_include "destroy set inet dscpclassify ts_detect"
-	check_set_exists ts_detect6 && post_include "destroy set inet dscpclassify ts_detect6"
-
 	case "$class_bulk" in
 	le) class_bulk=lephb ;;  # RFC-8622
-	cs0) destroy_threaded_service_rules; return 0 ;; # Skip rule creation
+	cs0) destroy_threaded_service_rules; return 0 ;; # Skip rule creation as CS0 is the default
 	esac
 
 	# Create sets for matching threaded services
@@ -734,22 +740,22 @@ create_threaded_service_rules() {
 	post_include "add rule inet dscpclassify established_connection meter ts_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((threaded_service_min_connections - 1))/minute } add @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
 
 	# Create threaded service classification rule chains
+	post_include "add chain inet dscpclassify threaded_service"
 	post_include "add rule inet dscpclassify threaded_service ct original bytes < $threaded_service_min_bytes return"
 	post_include "add rule inet dscpclassify threaded_service update @threaded_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"
 	post_include "add rule inet dscpclassify threaded_service update @threaded_services6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }"
 	post_include "add rule inet dscpclassify threaded_service ct mark set ct mark | \$${class_high_throughput} return"
 
+	post_include "add chain inet dscpclassify threaded_service_reply"
 	post_include "add rule inet dscpclassify threaded_service_reply ct reply bytes < $threaded_service_min_bytes return"
 	post_include "add rule inet dscpclassify threaded_service_reply update @threaded_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }"
 	post_include "add rule inet dscpclassify threaded_service_reply update @threaded_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }"
 	post_include "add rule inet dscpclassify threaded_service_reply ct mark set ct mark | \$${class_high_throughput} return"
 
 	# Create jumps from dynamic_classify chain
-	post_include "add chain inet dscpclassify threaded_service"
 	post_include "add rule inet dscpclassify dynamic_classify ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto @threaded_services goto threaded_service"
 	post_include "add rule inet dscpclassify dynamic_classify ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto @threaded_services6 goto threaded_service"
 
-	post_include "add chain inet dscpclassify threaded_service_reply"
 	post_include "add rule inet dscpclassify dynamic_classify_reply ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto @threaded_services goto threaded_service_reply"
 	post_include "add rule inet dscpclassify dynamic_classify_reply ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto @threaded_services6 goto threaded_service_reply"
 }
@@ -770,6 +776,16 @@ create_flush_actions() {
 	for map in $(nft -j list maps | jsonfilter -e '@.nftables[@.map.table="dscpclassify"].map.name'); do
 		pre_include "flush map inet dscpclassify ${map}"
 	done
+
+	# Destroy orphaned meter sets	
+	check_set_exists tc_detect && pre_include "destroy set inet dscpclassify tc_detect"
+	check_set_exists tc_detect6 && pre_include "destroy set inet dscpclassify tc_detect6"
+	check_set_exists tc_orig_bulk && pre_include "destroy set inet dscpclassify tc_orig_bulk"
+	check_set_exists tc_orig_bulk6 && pre_include "destroy set inet dscpclassify tc_orig_bulk6"
+	check_set_exists tc_reply_bulk && pre_include "destroy set inet dscpclassify tc_reply_bulk"
+	check_set_exists tc_reply_bulk6 && pre_include "destroy set inet dscpclassify tc_reply_bulk6"
+	check_set_exists ts_detect && pre_include "destroy set inet dscpclassify ts_detect"
+	check_set_exists ts_detect6 && pre_include "destroy set inet dscpclassify ts_detect6"
 }
 
 create_pre_include() {
@@ -778,8 +794,8 @@ create_pre_include() {
 	pre_include "define lan = { $(format_list "$lan" ", " "\"") }"
 	pre_include "define wan = { $(format_list "$wan" ", " "\"") }"
 
-	[ "$action" = "reload" ] && create_flush_actions 
 	pre_include "add table inet dscpclassify"
+	[ "$action" = "reload" ] && create_flush_actions 
 
 	pre_include "include \"${VERDICTS}\""
 	pre_include "include \"${MAPS}\""
@@ -792,7 +808,7 @@ create_post_include() {
 	config_foreach create_user_set ipset # section name consistent with fw4
 	config_foreach_reverse create_user_rule rule
 
-	create_client_hints_jump || return 1
+	create_client_classify_jump || return 1
 	create_dynamic_classify_jump || return 1
 	create_threaded_client_rules || return 1
 	create_threaded_service_rules || return 1
