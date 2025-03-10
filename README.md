@@ -76,6 +76,7 @@ A working default configuration is provided with the service which should work f
 |class_bulk | The class applied to threaded bulk clients | string | le|
 |class_high_throughput | The class applied to threaded high-throughput services | string | af13|
 |client_hints | Adopt the DSCP class supplied by a non-WAN client (this exludes CS6 and CS7 classes to avoid abuse) | boolean | 1|
+|dynamic_classify | Enable dynamic classification of threaded client/service connections | boolean | 1|
 |threaded_client_min_bytes | The total bytes before a threaded client port (i.e. P2P) is classified as bulk | uint | 10000|
 |threaded_client_min_connections | The number of established connections for a client port to be considered threaded | uint | 10|
 |threaded_service_min_bytes | The total bytes before a threaded service's connection is classed as high-throughput | uint | 1000000|
@@ -84,7 +85,7 @@ A working default configuration is provided with the service which should work f
 |lan_zone | Manually specify firewall zones that the service should treat as LAN | list: string | lan|
 |wan_device | Manually specify devices that the service should treat as WAN | list: string | |
 |wan_zone | Manually specify firewall zones that the service should treat as WAN | list: string | wan|
-|wmm | When enabled the service will mark LAN bound packets with DSCP values respective of WMM (RFC-8325) | boolean | 0|
+|wmm | When enabled the service will mark LAN bound packets with DSCP values respective of WMM (RFC-8325), this can achieve better WiFi packet prioritisation | boolean | 0|
 
 ### Example user rule
 
