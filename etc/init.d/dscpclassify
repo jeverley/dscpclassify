@@ -20,8 +20,10 @@ CLASS_BULK=le
 CLASS_HIGH_THROUGHPUT=af13
 CLIENT_HINTS=1
 DYNAMIC_CLASSIFY=1
+THREADED_CLIENT_DETECTION=1
 THREADED_CLIENT_MIN_BYTES=10000
 THREADED_CLIENT_MIN_CONNECTIONS=10
+THREADED_SERVICE_DETECTION=1
 THREADED_SERVICE_MIN_BYTES=1000000
 THREADED_SERVICE_MIN_CONNECTIONS=3
 WMM=0
@@ -639,13 +641,14 @@ destroy_threaded_client_rules() {
 }
 
 create_threaded_client_rules() {
-	local class_bulk threaded_client_min_bytes threaded_client_min_connections
+	local class_bulk dynamic_classify threaded_client_detection threaded_client_min_bytes threaded_client_min_connections
 
 	config_get_bool dynamic_classify global dynamic_classify $DYNAMIC_CLASSIFY
-	[ "$dynamic_classify" = 1 ] || {
+	config_get_bool threaded_client_detection global threaded_client_detection $THREADED_CLIENT_DETECTION
+	if [ "$dynamic_classify" != 1 ] || [ "$threaded_client_detection" != 1 ]; then
 		destroy_threaded_client_rules
 		return 0
-	}
+	fi
 
 	config_get threaded_client_min_connections global threaded_client_min_connections $THREADED_CLIENT_MIN_CONNECTIONS
 	if ! check_uint "$threaded_client_min_connections" || [ "$threaded_client_min_connections" -lt 2 ]; then
@@ -702,13 +705,14 @@ destroy_threaded_service_rules() {
 }
 
 create_threaded_service_rules() {
-	local class_high_throughput threaded_service_min_bytes threaded_service_min_connections
+	local class_high_throughput dynamic_classify threaded_service_detection threaded_service_min_bytes threaded_service_min_connections
 
 	config_get_bool dynamic_classify global dynamic_classify $DYNAMIC_CLASSIFY
-	[ "$dynamic_classify" = 1 ] || {
+	config_get_bool threaded_service_detection global threaded_service_detection $THREADED_SERVICE_DETECTION
+	if [ "$dynamic_classify" != 1 ] || [ "$threaded_service_detection" != 1 ]; then
 		destroy_threaded_service_rules
 		return 0
-	}
+	fi
 
 	config_get threaded_service_min_connections global threaded_service_min_connections $THREADED_SERVICE_MIN_CONNECTIONS
 	if ! check_uint "$threaded_service_min_connections" || [ "$threaded_service_min_connections" -lt 2 ]; then
