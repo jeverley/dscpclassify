@@ -22,12 +22,12 @@ The service can automatically adopt the DSCP mark supplied by a non-WAN client.\
 By default this ignores classes CS6 and CS7 to avoid abuse from clients such as IoT devices.
 
 ### Bulk client detection for P2P traffic 🌎
-These connections are one of the largest causes of [Bufferbloat](https://en.wikipedia.org/wiki/Bufferbloat), as a result they are classified as **Low Effort (LE/CS1**) by default and therefore prioritised **below Best Effort (CSO)** traffic when using the layer-cake qdisc.
+These connections are one of the largest causes of [Bufferbloat](https://en.wikipedia.org/wiki/Bufferbloat), as a result they are classified as **Low Effort (LE)** by default and therefore prioritised **below Best Effort (BE/DF/CS0)** traffic when using the layer-cake qdisc.
 
 ### High Throughput service detection for Steam downloads, cloud storage etc 🚛
-Services such as Steam make use of parralel connections to maximise download bandwith, this can also cause bufferbloat and so these connections are classified as **High-Throughput (AF13**) by default and prioritised as follows by cake:
-  * **diffserv8**: prioritised **below Best Effort (CS0/BE/DF)** traffic and **above Low Effort (LE)** traffic
-  * **diffserv3/4**: prioritised **equal to Best Effort (CS0/BE/DF)** traffic
+Services such as Steam make use of parralel connections to maximise download bandwith, this can also cause bufferbloat and so these connections are classified as **High-Throughput (AF13)** by default and prioritised as follows by cake:
+  * **diffserv8**: prioritised **below Best Effort (BE/DF/CS0)** traffic and **above Low Effort (LE)** traffic
+  * **diffserv3/4**: prioritised **equal to Best Effort (BE/DF/CS0)** traffic
 
 ## Service architecture 🏗️ 
 
@@ -76,7 +76,7 @@ The service configuration is located in '/etc/config/dscpclassify'.
 ### Section "service"
 |Name | Type | Required | Default | Description|
 |--- | --- | --- | --- | ---|
-|class_bulk | string | no | le | The default DSCP class applied to bulk connections |
+|class_low_effort | string | no | le <sup>1</sup> | The default DSCP class applied to low effort connections |
 |class_high_throughput | string | no | af13 | The default DSCP class applied to high-throughput connections |
 |wmm_mark_lan | boolean | no | 0 | Mark packets going out of LAN interfaces with DSCP values respective of [WMM (RFC-8325)](https://datatracker.ietf.org/doc/html/rfc8325#section-4.3) |
 |**Advanced** | | | | _**The below options are typically only required on non-standard setups**_ |
@@ -84,6 +84,8 @@ The service configuration is located in '/etc/config/dscpclassify'.
 |_wan_zone_ | list | no | wan | Used to specify WAN firewall zones |
 |_lan_device_ | list | no | | Used to specify LAN network interfaces (L3 physical interface i.e. `br-lan`) |
 |_wan_device_ | list | no | | Used to specify WAN network interfaces (L3 physical interface) |
+
+_1. When running on older OpenWrt releases with kernels < 5.13 the service defaults to class CS1 for low effort connections_
 
 ### Section "client_class_adoption"
 |Name | Type | Required | Default | Description|

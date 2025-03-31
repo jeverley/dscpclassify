@@ -172,6 +172,22 @@ fw_zone_interfaces() {
 	echo "$interfaces"
 }
 
+check_minimum_kernel_release() {
+	local minimum_release="$1"
+	local current_release current_major current_minor minimum_major minimum_minor
+
+	minimum_major=$(echo "$minimum_release" | awk -F '.' '{print $1}')
+	minimum_minor=$(echo "$minimum_release" | awk -F '.' '{print $2}')
+	current_release=$(uname -r)
+	current_major=$(echo "$current_release" | awk -F '.' '{print $1}')
+	current_minor=$(echo "$current_release" | awk -F '.' '{print $2}')
+	
+	if [ "$current_major" -gt "$minimum_major" ] || { [ "$current_major" = "$minimum_major" ] && [ "$current_minor" -ge "${minimum_minor:-0}" ]; }; then
+		return 0
+	fi 2>/dev/null
+	return 1
+}
+
 check_duration() {
 	echo "$1" | grep -q -E -e "^([1-9][0-9]*[smhd]){1,4}$"
 }
@@ -722,7 +738,7 @@ destroy_bulk_client_rules() {
 }
 
 create_bulk_client_rules() {
-	local class="$class_bulk"
+	local class="$class_low_effort"
 	local enabled=1
 	local min_bytes=10000
 	local min_connections=10
@@ -950,8 +966,10 @@ setup() {
 	local bulk_client_detection_config
 	local high_throughput_service_detection_config
 
-	local class_bulk="le"
+	local class_low_effort="le"
 	local class_high_throughput="af13"
+
+	check_minimum_kernel_release 5.13 || class_low_effort="cs1"
 
 	cleanup_setup
 	config_load dscpclassify || {
@@ -965,7 +983,7 @@ setup() {
 	config_get_exclusive_section high_throughput_service_detection_config high_throughput_service_detection
 
 	config_get_bool debug "$service_config" debug "$DEBUG"
-	config_get class_bulk "$service_config" class_bulk "$class_bulk"
+	config_get class_low_effort "$service_config" class_low_effort "$class_low_effort"
 	config_get class_high_throughput  "$service_config" class_high_throughput "$class_high_throughput"
 
 	get_zones || {

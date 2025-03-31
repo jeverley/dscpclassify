@@ -1,6 +1,4 @@
 config service
-	option class_bulk 'le'
-	option class_high_throughput 'af13'
 	option wmm_mark_lan '0'
 
 config client_class_adoption
