@@ -678,7 +678,8 @@ create_client_class_adoption_rules() {
 		return 0
 	}
 
-	for class in $(config_get "$client_class_adoption_config" exclude_class "$exclude_class_defaults"); do
+	config_get exclude_class "$client_class_adoption_config" exclude_class "$exclude_class_defaults"
+	for class in $exclude_class; do
 		class="$(dscp_class "$class")" || {
 			log err "The client_class_adoption config option 'exclude_class' contains an invalid DSCP class"
 			return 1
