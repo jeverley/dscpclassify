@@ -218,7 +218,7 @@ check_set_name() {
 		log warning "Sets cannot overwrite built-in dscpclassify sets"
 		return 1
 		;;
-	tc_detect | tc_detect6 | tc_orig_bulk | tc_orig_bulk6 | tc_reply_bulk | tc_reply_bulk6 | ts_detect | ts_detect6)
+	bulk_client_detect | bulk_client_detect6 | bulk_client_orig_classify | bulk_client_orig_classify6 | bulk_client_reply_classify | bulk_client_reply_classify6 | high_throughput_service_detect | high_throughput_service_detect6)
 		log warning "Sets cannot overwrite built-in dscpclassify meter sets"
 		return 1
 		;;
@@ -780,17 +780,17 @@ create_bulk_client_rules() {
 	check_set_exists bulk_clients6 || post_include "add set inet dscpclassify bulk_clients6 { type ipv6_addr . inet_service . inet_proto; flags timeout; }"
 
 	# Create threaded client detection rules
-	post_include "add rule inet dscpclassify established_connection meter tc_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients { ip daddr . th dport . meta l4proto timeout 30s }"
-	post_include "add rule inet dscpclassify established_connection meter tc_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
+	post_include "add rule inet dscpclassify established_connection meter bulk_client_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients { ip daddr . th dport . meta l4proto timeout 30s }"
+	post_include "add rule inet dscpclassify established_connection meter bulk_client_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
 
 	# Create threaded client classification rule chains
 	post_include "add chain inet dscpclassify bulk_client"
-	post_include "add rule inet dscpclassify bulk_client meter tc_orig_bulk { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
-	post_include "add rule inet dscpclassify bulk_client meter tc_orig_bulk6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet dscpclassify bulk_client meter bulk_client_orig_classify { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet dscpclassify bulk_client meter bulk_client_orig_classify6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
 
 	post_include "add chain inet dscpclassify bulk_client_reply"
-	post_include "add rule inet dscpclassify bulk_client_reply meter tc_reply_bulk { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
-	post_include "add rule inet dscpclassify bulk_client_reply meter tc_reply_bulk6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet dscpclassify bulk_client_reply meter bulk_client_reply_classify { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet dscpclassify bulk_client_reply meter bulk_client_reply_classify6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
 
 	# Create jumps from dynamic_classify chain
 	post_include "add rule inet dscpclassify dynamic_classify ip saddr . th sport . meta l4proto @bulk_clients goto bulk_client"
@@ -850,8 +850,8 @@ create_high_throughput_service_rules() {
 	check_set_exists high_throughput_services6 || post_include "add set inet dscpclassify high_throughput_services6 { type ipv6_addr . ipv6_addr . inet_service . inet_proto; flags timeout; }"
 
 	# Create threaded service detection rules
-	post_include "add rule inet dscpclassify established_connection meter ts_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
-	post_include "add rule inet dscpclassify established_connection meter ts_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
+	post_include "add rule inet dscpclassify established_connection meter high_throughput_service_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
+	post_include "add rule inet dscpclassify established_connection meter high_throughput_service_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
 
 	# Create threaded service classification rule chains
 	post_include "add chain inet dscpclassify high_throughput_service"
@@ -892,14 +892,14 @@ create_flush_actions() {
 	done
 
 	# Destroy orphaned meter sets	
-	check_set_exists tc_detect && pre_include "destroy set inet dscpclassify tc_detect"
-	check_set_exists tc_detect6 && pre_include "destroy set inet dscpclassify tc_detect6"
-	check_set_exists tc_orig_bulk && pre_include "destroy set inet dscpclassify tc_orig_bulk"
-	check_set_exists tc_orig_bulk6 && pre_include "destroy set inet dscpclassify tc_orig_bulk6"
-	check_set_exists tc_reply_bulk && pre_include "destroy set inet dscpclassify tc_reply_bulk"
-	check_set_exists tc_reply_bulk6 && pre_include "destroy set inet dscpclassify tc_reply_bulk6"
-	check_set_exists ts_detect && pre_include "destroy set inet dscpclassify ts_detect"
-	check_set_exists ts_detect6 && pre_include "destroy set inet dscpclassify ts_detect6"
+	check_set_exists bulk_client_detect && pre_include "destroy set inet dscpclassify bulk_client_detect"
+	check_set_exists bulk_client_detect6 && pre_include "destroy set inet dscpclassify bulk_client_detect6"
+	check_set_exists bulk_client_orig_classify && pre_include "destroy set inet dscpclassify bulk_client_orig_classify"
+	check_set_exists bulk_client_orig_classify6 && pre_include "destroy set inet dscpclassify bulk_client_orig_classify6"
+	check_set_exists bulk_client_reply_classify && pre_include "destroy set inet dscpclassify bulk_client_reply_classify"
+	check_set_exists bulk_client_reply_classify6 && pre_include "destroy set inet dscpclassify bulk_client_reply_classify6"
+	check_set_exists high_throughput_service_detect && pre_include "destroy set inet dscpclassify high_throughput_service_detect"
+	check_set_exists high_throughput_service_detect6 && pre_include "destroy set inet dscpclassify high_throughput_service_detect6"
 }
 
 create_pre_include() {
