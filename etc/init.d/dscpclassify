@@ -971,7 +971,7 @@ setup() {
 	local class_high_throughput="af13"
 
 	check_minimum_kernel_release 5.13 || {
-		log warning "Falling back to CS1 for default Low Effort class due to Kernel version < 5.13"
+		log info "Falling back to CS1 for default Low Effort class due to Kernel version < 5.13"
 		class_low_effort="cs1"
 	}
 
