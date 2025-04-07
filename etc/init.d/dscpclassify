@@ -495,12 +495,13 @@ rule_port() {
 		;;
 	esac
 
+	[ -n "$ports" ] || return 0
+
 	check_port_proto "$protocol" || {
 		log warning "Rules cannot combine a ${direction}_port with protocols other than 'tcp' or 'udp'"
 		return 1
 	}
 
-	[ -n "$ports" ] || return 0
 	parse_rule_ports "$ports" || {
 		log warning "Rule contains an invalid ${direction}_port"
 		return 1
@@ -534,6 +535,7 @@ rule_addr() {
 		log warning "Rule contains an invalid family"
 		return 1
 	fi
+
 	parse_rule_ips "$addresses" || {
 		log warning "Rule contains an invalid ${direction}_ip"
 		return 1
