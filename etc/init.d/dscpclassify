@@ -353,15 +353,8 @@ parse_set_type() {
 	return 0
 }
 
-parse_loadfile() {
-	infile=$(cat "$1")
-	loadfile_entry=$(format_list "$infile" ", ")
-
-	echo "$loadfile_entry"
-}
-
 create_user_set() {
-	local comment entry element enabled family flags match size name timeout type loadfile
+	local comment entry element enabled family flags match size name timeout type loadfile loadfile_entry
 	local flag_constant flag_interval flag_timeout auto_merge
 
 	config_get_bool enabled "$1" enabled 1
@@ -400,10 +393,11 @@ create_user_set() {
 	}
 
 	if [ -n "$loadfile" ]; then
-		entry=$(parse_loadfile "$loadfile") || return 1
+		log notice "Loading $loadfile for rule name: $name"
+		loadfile_entry=$(cat "$loadfile") || return 1
 	fi
 
-	[ -n "$entry$element" ] && post_include "add element inet dscpclassify $name { $(format_list "$entry $element" ", ") }"
+	[ -n "$entry$element$loadfile_entry" ] && post_include "add element inet dscpclassify $name { $(format_list "$entry $element $loadfile_entry" ", ") }"
 
 	return 0
 }
