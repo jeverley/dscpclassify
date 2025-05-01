@@ -353,8 +353,15 @@ parse_set_type() {
 	return 0
 }
 
+parse_loadfile() {
+	infile=$(cat "$1")
+	loadfile_entry=$(format_list "$infile" ", ")
+
+	echo "$loadfile_entry"
+}
+
 create_user_set() {
-	local comment entry element enabled family flags match size name timeout type
+	local comment entry element enabled family flags match size name timeout type loadfile
 	local flag_constant flag_interval flag_timeout auto_merge
 
 	config_get_bool enabled "$1" enabled 1
@@ -367,6 +374,7 @@ create_user_set() {
 	config_get type "$1" type # allows user to explicity specify the nft set type
 	config_get size "$1" maxelem
 	config_get timeout "$1" timeout
+	config_get loadfile "$1" loadfile
 
 	config_get_bool flag_constant "$1" constant
 	config_get_bool flag_interval "$1" interval
@@ -390,6 +398,10 @@ create_user_set() {
 		[ "$?" = 1 ] && post_include "destroy set inet dscpclassify $name"
 		post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
 	}
+
+	if [ -n "$loadfile" ]; then
+		entry=$(parse_loadfile "$loadfile") || return 1
+	fi
 
 	[ -n "$entry$element" ] && post_include "add element inet dscpclassify $name { $(format_list "$entry $element" ", ") }"
 
