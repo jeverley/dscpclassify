@@ -1017,7 +1017,7 @@ migrate_config() {
 
         [ "$changed" = 1 ] && {
                 uci commit dscpclassify
-                log notice "Service config migrated"
+                log info "Service config migrated"
         }
         return 0
 }
