@@ -1014,7 +1014,10 @@ migrate_config() {
     # Rename all 'set' type sections to 'ipset'
 	rename_section_type set ipset
 
-    [ "$changed" = 1 ] && uci commit dscpclassify
+    [ "$changed" = 1 ] && {
+	uci commit dscpclassify
+	log notice "Service config migrated"
+    }
     return 0
 }
 
