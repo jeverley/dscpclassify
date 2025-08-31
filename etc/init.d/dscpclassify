@@ -782,24 +782,27 @@ create_user_rule() {
 	rule_verdict "$class" || error=1
 	[ "$error" = 0 ] || return 1
 
-	# Create rule and return if no src or dst address is specified
+	# Create rule and return if no saddr or daddr is specified
 	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
 		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $dport $iifname $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 		return 0
 	}
 
-	# Create rules for each src and dst address combination
-	emit_rules() {
+	# Function for creating a rule for each address combination
+	for_each_saddr_daddr() {
 		local daddr_list="$1" saddr_list="$2"
 		[ -n "$daddr_list$saddr_list" ] || return 0
 		printf '%s\n' "${saddr_list:-}" | while IFS= read -r saddr || [ -n "$saddr" ]; do
 			printf '%s\n' "${daddr_list:-}" | while IFS= read -r daddr || [ -n "$daddr" ]; do
+				[ -n "$saddr$daddr" ] || continue
 				post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 			done
 		done
 	}
-	emit_rules "$daddr" "$saddr"
-	emit_rules "$daddr6" "$saddr6"
+
+	# Create rules for addr and addr6 combinations
+	for_each_saddr_daddr "$daddr" "$saddr"
+	for_each_saddr_daddr "$daddr6" "$saddr6"
 
 	return 0
 }
