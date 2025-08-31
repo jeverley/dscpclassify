@@ -5,21 +5,22 @@ START=50
 USE_PROCD=1
 DEBUG=1
 
-# Dynamic content
-DEBUG_FILE="/tmp/dscpclassify.debug"
-INCLUDES_PATH="/tmp/etc/dscpclassify.d"
-PRE_INCLUDE="${INCLUDES_PATH}/pre-include.nft"
-POST_INCLUDE="${INCLUDES_PATH}/post-include.nft"
-
-# Static content
-MAIN="/etc/dscpclassify.d/main.nft"
-VERDICTS="/etc/dscpclassify.d/verdicts.nft"
-MAPS="/etc/dscpclassify.d/maps.nft"
-
 # Service constants
 SERVICE_NAME="dscpclassify"
 TABLE="$SERVICE_NAME"
 CONFIG="$SERVICE_NAME"
+
+# Dynamic content
+DEBUG_FILE="/tmp/${SERVICE_NAME}.debug"
+INCLUDES_PATH="/tmp/etc/${SERVICE_NAME}.d"
+PRE_INCLUDE="${INCLUDES_PATH}/pre-include.nft"
+POST_INCLUDE="${INCLUDES_PATH}/post-include.nft"
+
+# Static content
+MAIN="/etc/${SERVICE_NAME}.d/main.nft"
+VERDICTS="/etc/${SERVICE_NAME}.d/verdicts.nft"
+MAPS="/etc/${SERVICE_NAME}.d/maps.nft"
+
 
 log() {
 	local level="$1" message="$2"
@@ -1211,7 +1212,7 @@ start_service() {
 }
 
 reload_service() {
-	/etc/init.d/dscpclassify status &>/dev/null || {
+	service "$SERVICE_NAME" status &>/dev/null || {
 		echo "The $SERVICE_NAME service is not loaded"
 		return 1
 	}
