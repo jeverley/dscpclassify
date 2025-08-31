@@ -226,6 +226,26 @@ check_minimum_kernel_release() {
 	return 1
 }
 
+check_addr4() {
+	echo "$1" | grep -q -E -e "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\/(3[0-2]|[12]?[0-9]))?$"
+}
+
+check_addr6() {
+	echo "$1" | grep -q -E -e "^(((0|0[\da-f]{3}|[1-9a-f][\da-f]{0,3})(:(0|0[\da-f]{3}|[1-9a-f][\da-f]{0,3})){7})|(?!:[^:])(?!.*::.*::)(?!.*(000|:|^)0:0.*::)(?!.*[\da-f]{5,})(?=(:{0,2}(0|0[\da-f]{3}|[1-9a-f][\da-f]{0,3})){0,7}(?!.*[\da-f])).*::($|(.*:)?[^:\n]{1,4}))$"
+}
+
+check_addr() {
+	local addr="$1" family="$2"
+
+	case $family in
+	"ipv4") check_addr4 "$addr"; return $? ;;
+	"ipv6") check_addr6 "$addr"; return $? ;;
+	"" ) check_addr4 "$addr" || check_addr6 "$addr"; return $? ;;
+	esac
+	return 1
+}
+
+
 check_duration() {
 	echo "$1" | grep -q -E -e "^([1-9][0-9]*[smhd]){1,4}$"
 }
@@ -429,9 +449,26 @@ parse_set_type() {
 	return 0
 }
 
+parse_set_loadfile() {
+	[ -n "$loadfile" ] || return 0
+	[ -f "$loadfile" ] || {
+		log warning "The ipset loadfile ${loadfile} can not be found"
+		return 1
+	}
+
+	while IFS= read -r addr || [ -n "$addr" ]; do
+		check_addr "$addr" "$family" || {
+			log warning "The ${family:+$family }loadfile address ${addr} is invalid"
+			continue
+		}
+		loadfile_addr="${loadfile_addr:+$loadfile_addr }$addr"
+	done < "$loadfile"
+	return 0
+}
+
 create_user_set() {
 	local section="$1"
-	local comment entry element enabled family flags match size name timeout type
+	local comment entry element enabled family flags match size name timeout type loadfile loadfile_addr
 	local flag_constant flag_interval flag_timeout auto_merge
 	local error=0
 
@@ -448,7 +485,8 @@ create_user_set() {
 
 	config_get_bool flag_constant "$section" constant
 	config_get_bool flag_interval "$section" interval
-
+	
+	config_get loadfile "$section" loadfile
 	config_get entry "$section" entry
 	config_get element "$section" element # deprecate for naming consistency with fw4 (entry)
 	[ -n "$element" ] && log warning "The user set 'element' option is being deprecated in favour of 'entry' for consistency with fw4"
@@ -460,6 +498,7 @@ create_user_set() {
 		error=1
 	}
 
+	parse_set_loadfile || error=1
 	parse_set_type || error=1
 	parse_set_timeout || error=1
 	parse_set_flags || error=1
@@ -470,7 +509,7 @@ create_user_set() {
 		post_include "add set inet $TABLE $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
 	}
 
-	[ -n "$entry$element" ] && post_include "add element inet $TABLE $name $(nft_element_list "$entry $element")"
+	[ -n "$entry$element$loadfile_addr" ] && post_include "add element inet $TABLE $name $(nft_element_list "$entry $element $loadfile_addr")"
 
 	return 0
 }
