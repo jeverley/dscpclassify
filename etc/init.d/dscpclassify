@@ -1009,7 +1009,7 @@ migrate_config() {
 	# Rename a section type
 	rename_section_type() {
 		local from_type="$1" to_type="$2"
-		for idx in $(uci show" $CONFIG" | grep "=${from_type}$" | cut -d'[' -f2 | cut -d']' -f1); do
+		for idx in $(uci show "$CONFIG" | grep "=${from_type}$" | cut -d'[' -f2 | cut -d']' -f1); do
 				uci rename "$CONFIG.@${from_type}[$idx]=${to_type}"
 				changed=1
 		done
