@@ -1,5 +1,5 @@
 #!/bin/sh /etc/rc.common
-# shellcheck disable=SC3043,SC3003,SC2019,SC2018,SC3020,SC3057
+# shellcheck disable=SC3043,SC3003,SC2019,SC2018,SC3020,SC3057,SC3060
 
 START=50
 USE_PROCD=1
@@ -231,7 +231,39 @@ check_addr4() {
 }
 
 check_addr6() {
-	echo "$1" | grep -q -E -e "^(((0|0[\da-f]{3}|[1-9a-f][\da-f]{0,3})(:(0|0[\da-f]{3}|[1-9a-f][\da-f]{0,3})){7})|(?!:[^:])(?!.*::.*::)(?!.*(000|:|^)0:0.*::)(?!.*[\da-f]{5,})(?=(:{0,2}(0|0[\da-f]{3}|[1-9a-f][\da-f]{0,3})){0,7}(?!.*[\da-f])).*::($|(.*:)?[^:\n]{1,4}))$"
+	local addr="$1" colons
+
+	# Count colons
+	colons="${addr//[^:]}"
+	[ "${#colons}" -gt 7 ] && return 1
+
+	# Reject if more than one "::"
+	case "$addr" in
+	  *::*::* ) return 1 ;;
+	esac
+
+	# Parse segments
+	local segment remaining="$addr"
+	while [ -n "$remaining" ]; do
+		case "$remaining" in
+			*:* )
+				segment="${remaining%%:*}"
+				remaining="${remaining#*:}"
+				;;
+			* )
+				segment="$remaining"
+				remaining=""
+				;;
+		esac
+		case "$segment" in
+			# Skip empty "::" segments
+			"") continue ;;
+			# Validate segment: max 4 hex chars
+			*[!0-9a-fA-F]* | ????? ) return 1 ;;
+		esac
+	done
+
+	return 0
 }
 
 check_addr() {
@@ -244,7 +276,6 @@ check_addr() {
 	esac
 	return 1
 }
-
 
 check_duration() {
 	echo "$1" | grep -q -E -e "^([1-9][0-9]*[smhd]){1,4}$"
@@ -457,6 +488,9 @@ parse_set_loadfile() {
 	}
 
 	while IFS= read -r addr || [ -n "$addr" ]; do
+		addr=$(echo "$addr" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		[ -n "$addr" ] || continue
+
 		check_addr "$addr" "$family" || {
 			log warning "The ${family:+$family }loadfile address ${addr} is invalid"
 			continue
