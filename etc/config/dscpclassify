@@ -1,10 +1,20 @@
-config global 'global'
-	option class_bulk 'le'
-	option class_high_throughput 'af13'
-	option client_hints '1'
-	option threaded_client_detection '1'
-	option threaded_service_detection '1'
-	option wmm '0'
+config service
+	option wmm_mark_lan '0'
+
+config client_class_adoption
+	option enabled '1'
+	list exclude_class 'cs6'
+	list exclude_class 'cs7'
+
+config bulk_client_detection
+	option enabled '1'
+	option min_bytes '10000'
+	option min_connections '10'
+
+config high_throughput_service_detection
+	option enabled '1'
+	option min_bytes '1000000'
+	option min_connections '3'
 
 config ipset
 	option name 'xcloud'
@@ -30,22 +40,22 @@ config rule
 	option name 'DoH'
 	list proto 'tcp'
 	list proto 'udp'
-	list dest_ip '8.8.8.8'				# Google
-	list dest_ip '8.8.4.4'				# Google
-	list dest_ip '1.1.1.1'				# Cloudflare
-	list dest_ip '1.0.0.1'				# Cloudflare
-	list dest_ip '9.9.9.9'				# Quad9 Secured
+	list dest_ip '8.8.8.8'			# Google
+	list dest_ip '8.8.4.4'			# Google
+	list dest_ip '1.1.1.1'			# Cloudflare
+	list dest_ip '1.0.0.1'			# Cloudflare
+	list dest_ip '9.9.9.9'			# Quad9 Secured
 	list dest_ip '149.112.112.112'		# Quad9 Secured
-	list dest_ip '9.9.9.11'				# Quad9 Secured w/ECS
+	list dest_ip '9.9.9.11'			# Quad9 Secured w/ECS
 	list dest_ip '149.112.112.11'		# Quad9 Secured w/ECS
 	list dest_ip '94.140.14.0/24'		# AdGuard
-	list dest_ip '2001:4860:4860::8888' # Google
-	list dest_ip '2001:4860:4860::8844' # Google
-	list dest_ip '2606:4700:4700::1111' # Cloudflare
-	list dest_ip '2606:4700:4700::1001' # Cloudflare
-	list dest_ip '2620:fe::fe'			# Quad9 Secured
-	list dest_ip '2620:fe::9'			# Quad9 Secured
-	list dest_ip '2620:fe::11'			# Quad9 Secured w/ECS
+	list dest_ip '2001:4860:4860::8888'	# Google
+	list dest_ip '2001:4860:4860::8844'	# Google
+	list dest_ip '2606:4700:4700::1111' 	# Cloudflare
+	list dest_ip '2606:4700:4700::1001'	# Cloudflare
+	list dest_ip '2620:fe::fe'		# Quad9 Secured
+	list dest_ip '2620:fe::9'		# Quad9 Secured
+	list dest_ip '2620:fe::11'		# Quad9 Secured w/ECS
 	list dest_ip '2620:fe::fe:11'		# Quad9 Secured w/ECS
 	list dest_ip '2a10:50c0::ad1:ff'	# AdGuard
 	list dest_ip '2a10:50c0::ad2:ff'	# AdGuard
