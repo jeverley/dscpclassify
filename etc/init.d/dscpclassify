@@ -79,9 +79,10 @@ check_table_exists() {
 	nft -t list table inet "$TABLE" "$1" &>/dev/null
 }
 
-destroy_compatability() {
+nft_compatibility() {
+	# Handle differences between nft versions
 	# Destroy is not supported in kernel versions < 6.3
-	# The latest kernels also return an error when destroy is used with a set that doesn't exist
+	# The latest kernels also return an error when destroy is used with non-existent sets
 	local command="$1" element
 
 	element=$(echo "$command" | awk '{print $NF}')
@@ -96,13 +97,13 @@ destroy_compatability() {
 
 pre_include() {
 	local command
-	command=$(destroy_compatibility "$1") || return 0
+	command=$(nft_compatibility "$1") || return 0
 	echo "$command" >>"$PRE_INCLUDE"
 }
 
 post_include() {
 	local command
-	command=$(destroy_compatibility "$1") || return 0
+	command=$(nft_compatibility "$1") || return 0
 	echo "$command" >>"$POST_INCLUDE"
 }
 
