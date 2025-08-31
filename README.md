@@ -145,6 +145,12 @@ config ipset
 	option interval '1'
 	list entry '13.104.0.0/14' # Western Europe
 
+config ipset
+	option name 'dns_4'
+	option interval '1'
+	option family 'ipv4'
+	option loadfile '/var/ipset-dns_hosts_4'
+
 config rule
 	option name 'Xbox Cloud Gaming'
 	option proto 'udp'
