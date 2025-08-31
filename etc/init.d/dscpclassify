@@ -523,8 +523,6 @@ create_user_set() {
 	
 	config_get loadfile "$section" loadfile
 	config_get entry "$section" entry
-	config_get element "$section" element # deprecate for naming consistency with fw4 (entry)
-	[ -n "$element" ] && log warning "The user set 'element' option is being deprecated in favour of 'entry' for consistency with fw4"
 
 	check_set_name "$name" || error=1
 	check_set_size "$size" || error=1
@@ -544,7 +542,7 @@ create_user_set() {
 		post_include "add set inet $TABLE $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
 	}
 
-	[ -n "$entry$element$loadfile_addr" ] && post_include "add element inet $TABLE $name $(nft_element_list "$entry $element $loadfile_addr")"
+	[ -n "$entry$loadfile_addr" ] && post_include "add element inet $TABLE $name $(nft_element_list "$entry $loadfile_addr")"
 
 	return 0
 }
@@ -1089,6 +1087,18 @@ migrate_config() {
 		done
 	}
 
+	# Rename an option
+	rename_section_option() {
+		local type="$1" old_opt="$2" new_opt="$3"
+		local idx value
+		for idx in $(uci show "$CONFIG" | grep "^$CONFIG.@${type}\[" | cut -d'[' -f2 | cut -d']' -f1); do
+			value=$(uci get "$CONFIG.@${type}[$idx].${old_opt}" 2>/dev/null) || continue
+			uci set "$CONFIG.@${type}[$idx].${new_opt}=${value}"
+			uci delete "$CONFIG.@${type}[$idx].${old_opt}"
+			changed=1
+		done
+	}
+
 	# Migrate global options to new section types
 	if uci get "$CONFIG.@global[0]" &>/dev/null; then
 		# Options for the 'service' section
@@ -1121,6 +1131,9 @@ migrate_config() {
 
 	# Rename all 'set' type sections to 'ipset'
 	rename_section_type set ipset
+
+	# Rename all instances of 'entity' in 'ipset' sections
+	rename_section_option ipset element entry
 
 	[ "$changed" = 1 ] && {
 		uci commit "$CONFIG"
