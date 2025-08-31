@@ -16,12 +16,14 @@ MAIN="/etc/dscpclassify.d/main.nft"
 VERDICTS="/etc/dscpclassify.d/verdicts.nft"
 MAPS="/etc/dscpclassify.d/maps.nft"
 
-# Service nft table
-TABLE="dscpclassify"
+# Service constants
+SERVICE_NAME="dscpclassify"
+TABLE="$SERVICE_NAME"
+CONFIG="$SERVICE_NAME"
 
 log() {
 	local level="$1" message="$2"
-	logger -t dscpclassify -p "daemon.${level}" "$message"
+	logger -t "$SERVICE_NAME" -p "daemon.${level}" "$message"
 	case "$level" in
 	info | warning | err) >&2 echo "$message" ;;
 	esac
@@ -29,15 +31,15 @@ log() {
 
 create_debug_file() {
 	{
-		echo "dscpclassify${action:+ $action}: $(date)"
+		echo "{$SERVICE_NAME}${action:+ $action}: $(date)"
 		echo $'\n'"<--- ${PRE_INCLUDE} --->"
 		[ -f "$PRE_INCLUDE" ] && cat "$PRE_INCLUDE"
 		echo $'\n'"<--- ${POST_INCLUDE} --->"
 		[ -f "$POST_INCLUDE" ] && cat "$POST_INCLUDE"
 		echo $'\n'"<--- nft -f ${MAIN} --->"
 		echo "${nft_result:+$nft_result}"
-		echo $'\n'"<--- nft list table inet dscpclassify --->"
-		nft list table inet dscpclassify 2>&1
+		echo $'\n'"<--- nft list table inet {$TABLE} --->"
+		nft list table inet "$TABLE" 2>&1
 	} > "$DEBUG_FILE"
 }
 
@@ -250,11 +252,11 @@ check_set_name() {
 		return 1
 		;;
 	bulk_clients | bulk_clients6 | high_throughput_services | high_throughput_services6)
-		log warning "Sets cannot overwrite built-in dscpclassify sets"
+		log warning "Sets cannot overwrite built-in $TABLE sets"
 		return 1
 		;;
 	bulk_client_detect | bulk_client_detect6 | bulk_client_orig_classify | bulk_client_orig_classify6 | bulk_client_reply_classify | bulk_client_reply_classify6 | high_throughput_service_detect | high_throughput_service_detect6)
-		log warning "Sets cannot overwrite built-in dscpclassify meter sets"
+		log warning "Sets cannot overwrite built-in $TABLE meter sets"
 		return 1
 		;;
 	esac
@@ -275,7 +277,7 @@ check_set_against_existing() {
 	local name="$1" type="$2" comment="$3" size="$4" flags="$5" timeout="$6"
 	local existing_set existing_type
 
-	existing_set=$(nft -t -j list set inet dscpclassify "$name" 2>/dev/null) || return 2
+	existing_set=$(nft -t -j list set inet "$TABLE" "$name" 2>/dev/null) || return 2
 
 	type="$(echo "$type" | sed 's/\s\+\.\s\+/\n/g')"
 	existing_type="$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.type")"
@@ -463,11 +465,11 @@ create_user_set() {
 	[ "$error" = 0 ] || return 1
 
 	check_set_against_existing "$name" "$type" "$comment" "$size" "$flags" "$timeout" || {
-		[ "$?" = 1 ] && post_include "destroy set inet dscpclassify $name"
-		post_include "add set inet dscpclassify $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
+		[ "$?" = 1 ] && post_include "destroy set inet $TABLE $name"
+		post_include "add set inet $TABLE $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
 	}
 
-	[ -n "$entry$element" ] && post_include "add element inet dscpclassify $name $(nft_element_list "$entry $element")"
+	[ -n "$entry$element" ] && post_include "add element inet $TABLE $name $(nft_element_list "$entry $element")"
 
 	return 0
 }
@@ -683,20 +685,20 @@ create_user_rule() {
 	[ "$error" = 0 ] || return 1
 
 	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
-		post_include "insert rule inet dscpclassify rule_classify $nfproto $l4proto $oifname $dport $iifname $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $dport $iifname $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 		return 0
 	}
 	[ -n "$daddr$saddr" ] && {
-		post_include "insert rule inet dscpclassify rule_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 	}
 	[ -n "$daddr6$saddr6" ] && {
-		post_include "insert rule inet dscpclassify rule_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 	}
 	return 0
 }
 
 destroy_client_class_adoption_rules() {
-	post_include "destroy chain inet dscpclassify client_classify"
+	post_include "destroy chain inet $TABLE client_classify"
 }
 
 create_client_class_adoption_rules() {
@@ -734,18 +736,18 @@ create_client_class_adoption_rules() {
 	}
 
 	# Create client class adoption rules
-	post_include "add rule inet dscpclassify client_classify $saddr ip dscp != $exclude_class ip dscp vmap @dscp_ct"
-	post_include "add rule inet dscpclassify client_classify $saddr6 ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
+	post_include "add rule inet $TABLE client_classify $saddr ip dscp != $exclude_class ip dscp vmap @dscp_ct"
+	post_include "add rule inet $TABLE client_classify $saddr6 ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
 
 	# Create jump from input and postrouting chains
-	post_include "add rule inet dscpclassify input ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump client_classify"
-	post_include "add rule inet dscpclassify postrouting ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump client_classify"
+	post_include "add rule inet $TABLE input ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump client_classify"
+	post_include "add rule inet $TABLE postrouting ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump client_classify"
 }
 
 destroy_dynamic_classify_rules() {
-	post_include "destroy chain inet dscpclassify dynamic_classify"
-	post_include "destroy chain inet dscpclassify dynamic_classify_reply"
-	post_include "destroy chain inet dscpclassify established_connection"
+	post_include "destroy chain inet $TABLE dynamic_classify"
+	post_include "destroy chain inet $TABLE dynamic_classify_reply"
+	post_include "destroy chain inet $TABLE established_connection"
 }
 
 create_dynamic_classify_rules() {
@@ -759,16 +761,16 @@ create_dynamic_classify_rules() {
 		return 0
 	fi
 
-	post_include "add rule inet dscpclassify input ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump dynamic_classify"
-	post_include "add rule inet dscpclassify postrouting ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump dynamic_classify"
+	post_include "add rule inet $TABLE input ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump dynamic_classify"
+	post_include "add rule inet $TABLE postrouting ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump dynamic_classify"
 }
 
 destroy_bulk_client_rules() {
-	post_include "destroy chain inet dscpclassify bulk_client"
-	post_include "destroy chain inet dscpclassify bulk_client_reply"
+	post_include "destroy chain inet $TABLE bulk_client"
+	post_include "destroy chain inet $TABLE bulk_client_reply"
 
-	check_set_exists bulk_clients && post_include "destroy set inet dscpclassify bulk_clients"
-	check_set_exists bulk_clients6 && post_include "destroy set inet dscpclassify bulk_clients6"
+	post_include "destroy set inet $TABLE bulk_clients"
+	post_include "destroy set inet $TABLE bulk_clients6"
 }
 
 create_bulk_client_rules() {
@@ -809,36 +811,36 @@ create_bulk_client_rules() {
 	esac
 
 	# Create sets for matching threaded clients
-	check_set_exists bulk_clients || post_include "add set inet dscpclassify bulk_clients { type ipv4_addr . inet_service . inet_proto; flags timeout; }"
-	check_set_exists bulk_clients6 || post_include "add set inet dscpclassify bulk_clients6 { type ipv6_addr . inet_service . inet_proto; flags timeout; }"
+	check_set_exists bulk_clients || post_include "add set inet $TABLE bulk_clients { type ipv4_addr . inet_service . inet_proto; flags timeout; }"
+	check_set_exists bulk_clients6 || post_include "add set inet $TABLE bulk_clients6 { type ipv6_addr . inet_service . inet_proto; flags timeout; }"
 
 	# Create threaded client detection rules
-	post_include "add rule inet dscpclassify established_connection meter bulk_client_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients { ip daddr . th dport . meta l4proto timeout 30s }"
-	post_include "add rule inet dscpclassify established_connection meter bulk_client_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE established_connection meter bulk_client_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients { ip daddr . th dport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE established_connection meter bulk_client_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
 
 	# Create threaded client classification rule chains
-	post_include "add chain inet dscpclassify bulk_client"
-	post_include "add rule inet dscpclassify bulk_client meter bulk_client_orig_classify { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
-	post_include "add rule inet dscpclassify bulk_client meter bulk_client_orig_classify6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add chain inet $TABLE bulk_client"
+	post_include "add rule inet $TABLE bulk_client meter bulk_client_orig_classify { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet $TABLE bulk_client meter bulk_client_orig_classify6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
 
-	post_include "add chain inet dscpclassify bulk_client_reply"
-	post_include "add rule inet dscpclassify bulk_client_reply meter bulk_client_reply_classify { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
-	post_include "add rule inet dscpclassify bulk_client_reply meter bulk_client_reply_classify6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add chain inet $TABLE bulk_client_reply"
+	post_include "add rule inet $TABLE bulk_client_reply meter bulk_client_reply_classify { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet $TABLE bulk_client_reply meter bulk_client_reply_classify6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
 
 	# Create jumps from dynamic_classify chain
-	post_include "add rule inet dscpclassify dynamic_classify ip saddr . th sport . meta l4proto @bulk_clients goto bulk_client"
-	post_include "add rule inet dscpclassify dynamic_classify ip6 saddr . th sport . meta l4proto @bulk_clients6 goto bulk_client"
+	post_include "add rule inet $TABLE dynamic_classify ip saddr . th sport . meta l4proto @bulk_clients goto bulk_client"
+	post_include "add rule inet $TABLE dynamic_classify ip6 saddr . th sport . meta l4proto @bulk_clients6 goto bulk_client"
 
-	post_include "add rule inet dscpclassify dynamic_classify_reply ip daddr . th dport . meta l4proto @bulk_clients goto bulk_client_reply"
-	post_include "add rule inet dscpclassify dynamic_classify_reply ip6 daddr . th dport . meta l4proto @bulk_clients6 goto bulk_client_reply"
+	post_include "add rule inet $TABLE dynamic_classify_reply ip daddr . th dport . meta l4proto @bulk_clients goto bulk_client_reply"
+	post_include "add rule inet $TABLE dynamic_classify_reply ip6 daddr . th dport . meta l4proto @bulk_clients6 goto bulk_client_reply"
 }
 
 destroy_high_throughput_service_rules() {
-	post_include "destroy chain inet dscpclassify high_throughput_service"
-	post_include "destroy chain inet dscpclassify high_throughput_service_reply"
+	post_include "destroy chain inet $TABLE high_throughput_service"
+	post_include "destroy chain inet $TABLE high_throughput_service_reply"
 
-	check_set_exists high_throughput_services && post_include "destroy set inet dscpclassify high_throughput_services"
-	check_set_exists high_throughput_services6 && post_include "destroy set inet dscpclassify high_throughput_services6"
+	post_include "destroy set inet $TABLE high_throughput_services"
+	post_include "destroy set inet $TABLE high_throughput_services6"
 }
 
 create_high_throughput_service_rules() {
@@ -879,60 +881,59 @@ create_high_throughput_service_rules() {
 	esac
 
 	# Create sets for matching threaded services
-	check_set_exists high_throughput_services || post_include "add set inet dscpclassify high_throughput_services { type ipv4_addr . ipv4_addr . inet_service . inet_proto; flags timeout; }"
-	check_set_exists high_throughput_services6 || post_include "add set inet dscpclassify high_throughput_services6 { type ipv6_addr . ipv6_addr . inet_service . inet_proto; flags timeout; }"
+	check_set_exists high_throughput_services || post_include "add set inet $TABLE high_throughput_services { type ipv4_addr . ipv4_addr . inet_service . inet_proto; flags timeout; }"
+	check_set_exists high_throughput_services6 || post_include "add set inet $TABLE high_throughput_services6 { type ipv6_addr . ipv6_addr . inet_service . inet_proto; flags timeout; }"
 
 	# Create threaded service detection rules
-	post_include "add rule inet dscpclassify established_connection meter high_throughput_service_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
-	post_include "add rule inet dscpclassify established_connection meter high_throughput_service_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE established_connection meter high_throughput_service_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE established_connection meter high_throughput_service_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
 
 	# Create threaded service classification rule chains
-	post_include "add chain inet dscpclassify high_throughput_service"
-	post_include "add rule inet dscpclassify high_throughput_service ct original bytes < $min_bytes return"
-	post_include "add rule inet dscpclassify high_throughput_service update @high_throughput_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"
-	post_include "add rule inet dscpclassify high_throughput_service update @high_throughput_services6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }"
-	post_include "add rule inet dscpclassify high_throughput_service ct mark set ct mark | \$${class} return"
+	post_include "add chain inet $TABLE high_throughput_service"
+	post_include "add rule inet $TABLE high_throughput_service ct original bytes < $min_bytes return"
+	post_include "add rule inet $TABLE high_throughput_service update @high_throughput_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE high_throughput_service update @high_throughput_services6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE high_throughput_service ct mark set ct mark | \$${class} return"
 
-	post_include "add chain inet dscpclassify high_throughput_service_reply"
-	post_include "add rule inet dscpclassify high_throughput_service_reply ct reply bytes < $min_bytes return"
-	post_include "add rule inet dscpclassify high_throughput_service_reply update @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }"
-	post_include "add rule inet dscpclassify high_throughput_service_reply update @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }"
-	post_include "add rule inet dscpclassify high_throughput_service_reply ct mark set ct mark | \$${class} return"
+	post_include "add chain inet $TABLE high_throughput_service_reply"
+	post_include "add rule inet $TABLE high_throughput_service_reply ct reply bytes < $min_bytes return"
+	post_include "add rule inet $TABLE high_throughput_service_reply update @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE high_throughput_service_reply update @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE high_throughput_service_reply ct mark set ct mark | \$${class} return"
 
 	# Create jumps from dynamic_classify chain
-	post_include "add rule inet dscpclassify dynamic_classify ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto @high_throughput_services goto high_throughput_service"
-	post_include "add rule inet dscpclassify dynamic_classify ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto @high_throughput_services6 goto high_throughput_service"
+	post_include "add rule inet $TABLE dynamic_classify ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto @high_throughput_services goto high_throughput_service"
+	post_include "add rule inet $TABLE dynamic_classify ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto @high_throughput_services6 goto high_throughput_service"
 
-	post_include "add rule inet dscpclassify dynamic_classify_reply ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto @high_throughput_services goto high_throughput_service_reply"
-	post_include "add rule inet dscpclassify dynamic_classify_reply ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto @high_throughput_services6 goto high_throughput_service_reply"
+	post_include "add rule inet $TABLE dynamic_classify_reply ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto @high_throughput_services goto high_throughput_service_reply"
+	post_include "add rule inet $TABLE dynamic_classify_reply ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto @high_throughput_services6 goto high_throughput_service_reply"
 }
 
 create_dscp_mark_rule() {
 	local wmm_mark_lan=1
 
 	config_get_bool wmm_mark_lan "$service_config" wmm_mark_lan "$wmm_mark_lan"
-	[ "$wmm_mark_lan" = 1 ] && post_include "add rule inet dscpclassify postrouting oifname \$lan ct mark & \$ct_dscp vmap @ct_wmm"
+	[ "$wmm_mark_lan" = 1 ] && post_include "add rule inet $TABLE postrouting oifname \$lan ct mark & \$ct_dscp vmap @ct_wmm"
 	
-	post_include "add rule inet dscpclassify postrouting ct mark & \$ct_dscp vmap @ct_dscp"
+	post_include "add rule inet $TABLE postrouting ct mark & \$ct_dscp vmap @ct_dscp"
 }
 
 create_flush_actions() {
-	for chain in $(nft -j list chains | jsonfilter -e '@.nftables[@.chain.table="dscpclassify"].chain.name'); do
-		pre_include "flush chain inet dscpclassify ${chain}"
+	for chain in $(nft -j list chains | jsonfilter -e "@.nftables[@.chain.table=\"${TABLE}\"].chain.name"); do
+		pre_include "flush chain inet $TABLE ${chain}"
 	done
-	for map in $(nft -j list maps | jsonfilter -e '@.nftables[@.map.table="dscpclassify"].map.name'); do
-		pre_include "flush map inet dscpclassify ${map}"
+	for map in $(nft -j list maps | jsonfilter -e "@.nftables[@.map.table=\"${TABLE}\"].map.name"); do
+		pre_include "flush map inet $TABLE ${map}"
 	done
 
-	# Destroy orphaned meter sets	
-	check_set_exists bulk_client_detect && pre_include "destroy set inet dscpclassify bulk_client_detect"
-	check_set_exists bulk_client_detect6 && pre_include "destroy set inet dscpclassify bulk_client_detect6"
-	check_set_exists bulk_client_orig_classify && pre_include "destroy set inet dscpclassify bulk_client_orig_classify"
-	check_set_exists bulk_client_orig_classify6 && pre_include "destroy set inet dscpclassify bulk_client_orig_classify6"
-	check_set_exists bulk_client_reply_classify && pre_include "destroy set inet dscpclassify bulk_client_reply_classify"
-	check_set_exists bulk_client_reply_classify6 && pre_include "destroy set inet dscpclassify bulk_client_reply_classify6"
-	check_set_exists high_throughput_service_detect && pre_include "destroy set inet dscpclassify high_throughput_service_detect"
-	check_set_exists high_throughput_service_detect6 && pre_include "destroy set inet dscpclassify high_throughput_service_detect6"
+	pre_include "destroy set inet $TABLE bulk_client_detect"
+	pre_include "destroy set inet $TABLE bulk_client_detect6"
+	pre_include "destroy set inet $TABLE bulk_client_orig_classify"
+	pre_include "destroy set inet $TABLE bulk_client_orig_classify6"
+	pre_include "destroy set inet $TABLE bulk_client_reply_classify"
+	pre_include "destroy set inet $TABLE bulk_client_reply_classify6"
+	pre_include "destroy set inet $TABLE high_throughput_service_detect"
+	pre_include "destroy set inet $TABLE high_throughput_service_detect6"
 }
 
 create_pre_include() {
@@ -941,7 +942,7 @@ create_pre_include() {
 	pre_include "define lan = $(nft_interface_list "$lan")"
 	pre_include "define wan = $(nft_interface_list "$wan")"
 
-	pre_include "add table inet dscpclassify"
+	pre_include "add table inet $TABLE"
 	[ "$action" = "reload" ] && create_flush_actions 
 
 	pre_include "include \"${VERDICTS}\""
@@ -987,8 +988,8 @@ migrate_config() {
 	# Ensure a section exists, create it if missing
 	ensure_section_exists() {
 		local type="$1"
-		uci get "dscpclassify.@${type}[0]" &>/dev/null || {
-			uci add dscpclassify "$type" >/dev/null
+		uci get "$CONFIG.@${type}[0]" &>/dev/null || {
+			uci add $CONFIG "$type" >/dev/null
 			changed=1
 		}
 	}
@@ -996,10 +997,10 @@ migrate_config() {
 	# Move an option from one section to another
 	move_unique_section_option() {
 		local from_type="$1" from_opt="$2" to_type="$3" to_opt="$4"
-		value=$(uci get "dscpclassify.@${from_type}[0].${from_opt}" 2>/dev/null) || return 1
+		value=$(uci get "$CONFIG.@${from_type}[0].${from_opt}" 2>/dev/null) || return 1
 		ensure_section_exists "$to_type"
-		uci set "dscpclassify.@${to_type}[0].${to_opt}=${value}"
-		uci delete "dscpclassify.@${from_type}[0].${from_opt}"
+		uci set "$CONFIG.@${to_type}[0].${to_opt}=${value}"
+		uci delete "$CONFIG.@${from_type}[0].${from_opt}"
 		changed=1
 		return 0
 	}
@@ -1007,14 +1008,14 @@ migrate_config() {
 	# Rename a section type
 	rename_section_type() {
 		local from_type="$1" to_type="$2"
-		for idx in $(uci show dscpclassify | grep "=${from_type}$" | cut -d'[' -f2 | cut -d']' -f1); do
-				uci rename "dscpclassify.@${from_type}[$idx]=${to_type}"
+		for idx in $(uci show" $CONFIG" | grep "=${from_type}$" | cut -d'[' -f2 | cut -d']' -f1); do
+				uci rename "$CONFIG.@${from_type}[$idx]=${to_type}"
 				changed=1
 		done
 	}
 
 	# Migrate global options to new section types
-	if uci get dscpclassify.@global[0] &>/dev/null; then
+	if uci get "$CONFIG.@global[0]" &>/dev/null; then
 		# Options for the 'service' section
 		move_unique_section_option global lan_device service lan_device
 		move_unique_section_option global lan_zone service lan_zone
@@ -1039,7 +1040,7 @@ migrate_config() {
 		move_unique_section_option global threaded_service_min_bytes high_throughput_service_detection min_bytes
 		move_unique_section_option global threaded_service_min_connections high_throughput_service_detection min_connections
 
-		uci delete dscpclassify.@global[0]
+		uci delete "$CONFIG.@global[0]"
 		changed=1
 	fi
 
@@ -1047,7 +1048,7 @@ migrate_config() {
 	rename_section_type set ipset
 
 	[ "$changed" = 1 ] && {
-		uci commit dscpclassify
+		uci commit "$CONFIG"
 		log info "Service config migrated"
 	}
 	return 0
@@ -1077,7 +1078,7 @@ setup() {
 
 	cleanup_setup
 	migrate_config
-	config_load dscpclassify || {
+	config_load "$CONFIG" || {
 		log err "Failed to load config file"
 		return 1
 	}
@@ -1137,7 +1138,7 @@ start_service() {
 
 reload_service() {
 	/etc/init.d/dscpclassify status &>/dev/null || {
-		echo "The dscpclassify service is not loaded"
+		echo "The $SERVICE_NAME service is not loaded"
 		return 1
 	}
 	start_service
