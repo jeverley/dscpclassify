@@ -234,13 +234,22 @@ check_addr4() {
 check_addr6() {
 	local addr="$1" colons
 
+	# Validate CIDR if present
+	case "$addr" in
+	*/[0-9]*)
+		mask="${addr#*/}"
+		addr="${addr%%/*}"
+		[ "$mask" -ge 0 ] && [ "$mask" -le 128 ] || return 1
+		;;
+	esac
+
 	# Count colons
 	colons="${addr//[^:]}"
 	[ "${#colons}" -gt 7 ] && return 1
 
 	# Reject if more than one "::"
 	case "$addr" in
-	  *::*::* ) return 1 ;;
+		*::*::* ) return 1 ;;
 	esac
 
 	# Parse segments
