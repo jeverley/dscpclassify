@@ -16,6 +16,8 @@ MAIN="/etc/dscpclassify.d/main.nft"
 VERDICTS="/etc/dscpclassify.d/verdicts.nft"
 MAPS="/etc/dscpclassify.d/maps.nft"
 
+# Service nft table
+TABLE="dscpclassify"
 
 log() {
 	local level="$1" message="$2"
@@ -48,7 +50,8 @@ delete_includes() {
 }
 
 destroy_table() {
-	nft destroy table inet dscpclassify &>/dev/null
+	nft delete table inet "$TABLE" &>/dev/null
+	return 0
 }
 
 cleanup_service() {
@@ -62,13 +65,45 @@ cleanup_setup() {
 	delete_includes
 }
 
+check_chain_exists() {
+	nft -t list chain inet "$TABLE" "$1" &>/dev/null
+}
+
+check_set_exists() {
+	nft -t list set inet "$TABLE" "$1" &>/dev/null
+}
+
+check_table_exists() {
+	nft -t list table inet "$TABLE" "$1" &>/dev/null
+}
+
+destroy_compatability() {
+	# Destroy is not supported in kernel versions < 6.3
+	# The latest kernels also return an error when destroy is used with a set that doesn't exist
+	local command="$1" element
+
+	element=$(echo "$command" | awk '{print $NF}')
+	case "$command" in
+	"destroy chain "*) check_chain_exists "$element" || return 1 ;;
+	"destroy set "*) check_set_exists "$element" || return 1 ;;
+	"destroy table "*) check_table_exists "$element" || return 1 ;;
+	esac
+	echo "$command" | sed "s/^destroy /$destroy_action /"
+	return 0
+}
+
 pre_include() {
-	echo "$1" >>"$PRE_INCLUDE"
+	local command
+	command=$(destroy_compatibility "$1") || return 0
+	echo "$command" >>"$PRE_INCLUDE"
 }
 
 post_include() {
-	echo "$1" >>"$POST_INCLUDE"
+	local command
+	command=$(destroy_compatibility "$1") || return 0
+	echo "$command" >>"$POST_INCLUDE"
 }
+
 
 config_foreach_reverse() {
 	local ___function="$1"
@@ -234,10 +269,6 @@ check_set_size() {
 		return 1
 	fi 2>/dev/null
 	return 0
-}
-
-check_set_exists() {
-	nft -t list set inet dscpclassify "$1" &>/dev/null
 }
 
 check_set_against_existing() {
@@ -1031,11 +1062,18 @@ setup() {
 
 	local class_low_effort="le"
 	local class_high_throughput="af13"
+	local destroy_action
 
 	check_minimum_kernel_release 5.13 || {
 		log info "Falling back to CS1 for default Low Effort class due to Kernel version < 5.13"
 		class_low_effort="cs1"
 	}
+	if check_minimum_kernel_release 6.3; then
+		destroy_action="destroy"
+	else
+		log info "Falling back to nft delete due to Kernel version < 6.3"
+		destroy_action="delete"
+	fi
 
 	cleanup_setup
 	migrate_config
