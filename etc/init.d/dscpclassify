@@ -671,19 +671,19 @@ rule_addr() {
 	[ -n "$addresses" ] || return 0
 
 	if [ -n "$family" ] && ! check_family "$family"; then
-		log warning "Rule contains an invalid family"
+		log warning "Rule ${name:+'$name '}contains an invalid family"
 		return 1
 	fi
 	parse_rule_ips "$addresses" || {
-		log warning "Rule contains an invalid ${direction}_ip"
+		log warning "Rule ${name:+'$name '}contains an invalid ${direction}_ip"
 		return 1
 	}
 	if [ -n "$ipv4$ipv4_negate$ipset$ipset_negate" ] && [ "$family" = "ipv6" ]; then
-		log warning "Rules cannot combine an ipv4 ${direction}_ip with the 'ipv6' family option"
+		log warning "Rules cannot combine an ipv4 ${direction}_ip with the 'ipv6' family option${name:+, rule: '$name'}"
 		return 1
 	fi
 	if [ -n "$ipv6$ipv6_negate$ipset6$ipset_negate6" ] && [ "$family" = "ipv4" ]; then
-		log warning "Rules cannot combine an ipv6 ${direction}_ip with the 'ipv4' family option"
+		log warning "Rules cannot combine an ipv6 ${direction}_ip with the 'ipv4' family option${name:+, rule: '$name'}"
 		return 1
 	fi
 
@@ -811,7 +811,7 @@ destroy_client_class_adoption_rules() {
 create_client_class_adoption_rules() {
 	local enabled=1
 	local exclude_class_defaults="cs6 cs7"
-	local exclude_class src_ip
+	local exclude_class src_ip family
 	local saddr saddr6
 
 	config_get_bool enabled "$client_class_adoption_config" enabled "$enabled"

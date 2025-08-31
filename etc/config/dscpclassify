@@ -139,6 +139,7 @@ config ipset
 
 config ipset
 	option name 'zoom_phone6'
+	option family 'ipv6'
 	option interval '1'
 	list entry '2620:123:2000::/40'
 
