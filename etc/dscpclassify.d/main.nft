@@ -67,7 +67,9 @@ table inet dscpclassify {
     }
 
     chain client_classify {
-        ## Client class adoption rules are added here by the init script
+        ## Assess client DSCP mark for classification
+        ip dscp != { cs0, cs6, cs7 } ip dscp vmap @dscp_ct
+        ip6 dscp != { cs0, cs6, cs7 } ip6 dscp vmap @dscp_ct
     }
 
     chain dynamic_classify {
