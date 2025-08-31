@@ -1225,8 +1225,8 @@ start_service() {
 }
 
 reload_service() {
-	service "$SERVICE_NAME" status &>/dev/null || {
-		echo "The $SERVICE_NAME service is not loaded"
+	"/etc/init.d/${SERVICE_NAME}" status &>/dev/null || {
+		echo "The ${SERVICE_NAME} service is not loaded"
 		return 1
 	}
 	start_service
