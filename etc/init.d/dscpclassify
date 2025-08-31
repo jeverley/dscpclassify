@@ -951,39 +951,39 @@ get_zones() {
 }
 
 migrate_config() {
-        local changed=0
+	local changed=0
 
-        # Ensure a section exists, create it if missing
-        ensure_section_exists() {
-                local type="$1"
-                uci get "dscpclassify.@${type}[0]" &>/dev/null || {
-                        uci add dscpclassify "$type" >/dev/null
-                        changed=1
-                }
-        }
+	# Ensure a section exists, create it if missing
+	ensure_section_exists() {
+		local type="$1"
+		uci get "dscpclassify.@${type}[0]" &>/dev/null || {
+			uci add dscpclassify "$type" >/dev/null
+			changed=1
+		}
+	}
 
-        # Move an option from one section to another
-        move_unique_section_option() {
-                local from_type="$1" from_opt="$2" to_type="$3" to_opt="$4"
-                value=$(uci get "dscpclassify.@${from_type}[0].${from_opt}" 2>/dev/null) || return 1
-                ensure_section_exists "$to_type"
-                uci set "dscpclassify.@${to_type}[0].${to_opt}=${value}"
-                uci delete "dscpclassify.@${from_type}[0].${from_opt}"
-                changed=1
-                return 0
-        }
+	# Move an option from one section to another
+	move_unique_section_option() {
+		local from_type="$1" from_opt="$2" to_type="$3" to_opt="$4"
+		value=$(uci get "dscpclassify.@${from_type}[0].${from_opt}" 2>/dev/null) || return 1
+		ensure_section_exists "$to_type"
+		uci set "dscpclassify.@${to_type}[0].${to_opt}=${value}"
+		uci delete "dscpclassify.@${from_type}[0].${from_opt}"
+		changed=1
+		return 0
+	}
 
 	# Rename a section type
 	rename_section_type() {
-                local from_type="$1" to_type="$2"
-                for idx in $(uci show dscpclassify | grep "=${from_type}$" | cut -d'[' -f2 | cut -d']' -f1); do
-                        uci rename "dscpclassify.@${from_type}[$idx]=${to_type}"
-                        changed=1
-                done
-        }
+		local from_type="$1" to_type="$2"
+		for idx in $(uci show dscpclassify | grep "=${from_type}$" | cut -d'[' -f2 | cut -d']' -f1); do
+				uci rename "dscpclassify.@${from_type}[$idx]=${to_type}"
+				changed=1
+		done
+	}
 
-        # Migrate global options to new section types
-        if uci get dscpclassify.@global[0] &>/dev/null; then
+	# Migrate global options to new section types
+	if uci get dscpclassify.@global[0] &>/dev/null; then
 		# Options for the 'service' section
 		move_unique_section_option global lan_device service lan_device
 		move_unique_section_option global lan_zone service lan_zone
@@ -1012,14 +1012,14 @@ migrate_config() {
 		changed=1
 	fi
 
-        # Rename all 'set' type sections to 'ipset'
-        rename_section_type set ipset
+	# Rename all 'set' type sections to 'ipset'
+	rename_section_type set ipset
 
-        [ "$changed" = 1 ] && {
-                uci commit dscpclassify
-                log info "Service config migrated"
-        }
-        return 0
+	[ "$changed" = 1 ] && {
+		uci commit dscpclassify
+		log info "Service config migrated"
+	}
+	return 0
 }
 
 setup() {
