@@ -17,6 +17,19 @@ config high_throughput_service_detection
 	option min_connections '3'
 
 config ipset
+	option name 'ms_teams'
+	option interval '1'
+	list entry '13.107.64.0/18'
+	list entry '52.112.0.0/14'
+	list entry '52.122.0.0/15'
+
+config ipset
+	option name 'ms_teams6'
+	option family 'ipv6'
+	option interval '1'
+	list entry '2603:1063::/39'
+
+config ipset
 	option name 'xcloud'
 	option interval '1'
 	list entry '13.104.0.0/14' # Western Europe
@@ -145,71 +158,36 @@ config ipset
 
 config rule
 	option name 'Zoom Meetings and Webinars TCP'
-	option family 'ipv4'
 	list proto 'tcp'
 	list dest_port '443'
 	list dest_port '8801-8802'
 	list dest_ip '@zoom_meet'
-	option class 'af41'
-
-config rule
-	option name 'Zoom Meetings and Webinars TCP IPv6'
-	option family 'ipv6'
-	list proto 'tcp'
-	list dest_port '443'
-	list dest_port '8801-8802'
 	list dest_ip '@zoom_meet6'
 	option class 'af41'
 
 config rule
 	option name 'Zoom Meetings and Webinars UDP'
-	option family 'ipv4'
 	list proto 'udp'
 	list dest_port '3478-3479'
 	list dest_port '8801-8810'
 	list dest_ip '@zoom_meet'
-	option class 'af41'
-
-config rule
-	option name 'Zoom Meetings and Webinars UDP IPv6'
-	option family 'ipv6'
-	list proto 'udp'
-	list dest_port '3478-3479'
-	list dest_port '8801-8810'
 	list dest_ip '@zoom_meet6'
 	option class 'af41'
 
 config rule
 	option name 'Zoom Phone TCP'
-	option family 'ipv4'
 	list proto 'tcp'
 	list dest_port '443'
 	list dest_port '5091'
 	list dest_ip '@zoom_phone'
-	option class 'af41'
-
-config rule
-	option name 'Zoom Phone TCP IPv6'
-	option family 'ipv6'
-	list proto 'tcp'
-	list dest_port '443'
-	list dest_port '5091'
 	list dest_ip '@zoom_phone6'
 	option class 'af41'
 
 config rule
 	option name 'Zoom Phone UDP'
-	option family 'ipv4'
 	list proto 'udp'
 	list dest_port '20000-64000'
 	list dest_ip '@zoom_phone'
-	option class 'ef'
-
-config rule
-	option name 'Zoom Phone UDP IPv6'
-	option family 'ipv6'
-	list proto 'udp'
-	list dest_port '20000-64000'
 	list dest_ip '@zoom_phone6'
 	option class 'ef'
 
@@ -271,52 +249,37 @@ config rule
 config rule
 	option name 'Xbox Cloud Gaming'
 	option proto 'udp'
-	option family 'ipv4'
 	list dest_ip '@xcloud'
-	list dest_port '1000-1150'
-	list dest_port '9002'
-	option class 'af41'
-
-config rule
-	option name 'Xbox Cloud Gaming IPv6'
-	option proto 'udp'
-	option family 'ipv6'
 	list dest_ip '@xcloud6'
 	list dest_port '1000-1150'
 	list dest_port '9002'
 	option class 'af41'
 
 config rule
-	option name 'Microsoft Teams voice'
+	option name 'Microsoft Teams Voice'
 	option proto 'udp'
 	option src_port '50000-50019'
 	option dest_port '3478-3481'
-	list dest_ip '13.107.64.0/18'
-	list dest_ip '52.112.0.0/14'
-	list dest_ip '52.122.0.0/15'
-	list dest_ip '2603:1063::/39'
+	list dest_ip '@ms_teams'
+	list dest_ip '@ms_teams6'
 	option class 'ef'
 
 config rule
-	option name 'Microsoft Teams video'
+	option name 'Microsoft Teams Video'
 	option proto 'udp'
 	option src_port '50020-50039'
 	option dest_port '3478-3481'
-	list dest_ip '13.107.64.0/18'
-	list dest_ip '52.112.0.0/14'
-	list dest_ip '52.122.0.0/15'
-	list dest_ip '2603:1063::/39'
+	list dest_ip '@ms_teams'
+	list dest_ip '@ms_teams6'
 	option class 'af41'
 
 config rule
-	option name 'Microsoft Teams sharing'
+	option name 'Microsoft Teams Sharing'
 	option proto 'udp'
 	option src_port '50040-50059'
 	option dest_port '3478-3481'
-	list dest_ip '13.107.64.0/18'
-	list dest_ip '52.112.0.0/14'
-	list dest_ip '52.122.0.0/15'
-	list dest_ip '2603:1063::/39'
+	list dest_ip '@ms_teams'
+	list dest_ip '@ms_teams6'
 	option class 'af21'
 
 config rule
