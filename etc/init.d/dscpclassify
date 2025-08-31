@@ -369,9 +369,22 @@ parse_rule_ports() {
 }
 
 parse_rule_ips() {
-	for i in $1; do
+	local addresses="$1"
+
+	match_ipset() {
+		local name="$1"
+		for set in $2; do
+			case $name in
+			"@$set") return 0;;
+			"!@$set") return 1;;
+			esac
+		done
+		return 2
+	}
+
+	for i in $(printf '%s\n' $addresses | sort -u); do
 		# ipv4 address
-		echo "$i" | grep -q -E -e "^!?(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))(/([0-9]|[12][0-9]|3[0-2]))?$" && {
+		check_addr4 "$i" && {
 			case "$i" in
 			"!"*) ipv4_negate="$ipv4_negate ${i#*!}" ;;
 			*) ipv4="$ipv4 $i" ;;
@@ -380,7 +393,7 @@ parse_rule_ips() {
 		}
 
 		# ipv6 address
-		echo "$i" | grep -q -E -e "^!?(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)(/[0-9]{1,3})?$" && {
+		check_addr6 "$i" && {
 			case "$i" in
 			"!"*) ipv6_negate="$ipv6_negate ${i#*!}" ;;
 			*) ipv6="$ipv6 $i" ;;
@@ -388,16 +401,21 @@ parse_rule_ips() {
 			continue
 		}
 
-		# set name
-		echo "$i" | grep -q -E -e "^!?@\w+$" && {
-			case "$i" in
-			"!"*) ipset_negate="$ipset_negate ${i#*!}" ;;
-			*) ipset="$ipset $i" ;;
-			esac
-			continue
-		}
+		# ipv4 ipset
+		match_ipset "$i" "$sets_ipv4"
+		case $? in
+		  0) ipset="${ipset:+$ipset }$i"; continue ;;
+		  1) ipset_negate="${ipset_negate:+$ipset_negate }${i#*!}"; continue ;;
+		esac
 
-		log warning "Invalid ip/set name: $i"
+		#ipv6 ipset
+		match_ipset "$i" "$sets_ipv6"
+		case $? in
+		  0) ipset6="${ipset6:+$ipset6 }$i"; continue ;;
+		  1) ipset6_negate="${ipset_negate6:+$ipset_negate6 }${i#*!}"; continue ;;
+		esac
+
+		log warning "Invalid ip/ipset name: $i"
 		return 1
 	done
 }
@@ -544,6 +562,12 @@ create_user_set() {
 
 	[ -n "$entry$loadfile_addr" ] && post_include "add element inet $TABLE $name $(nft_element_list "$entry $loadfile_addr")"
 
+	# Store set type for use in user rules
+	case $family in
+	"ipv4") sets_ipv4="${sets_ipv4:+$sets_ipv4 }$name" ;;
+	"ipv6") sets_ipv6="${sets_ipv6:+$sets_ipv6 }$name" ;;
+	esac
+
 	return 0
 }
 
@@ -621,10 +645,10 @@ rule_port() {
 }
 
 rule_addr() {
-	local direction="$1" addresses="$2" family="$3" 
-	local rule rule6 xaddr
-	local ipv4 ipv6 ipset
-	local ipv4_negate ipv6_negate ipset_negate
+	local direction="$1" addresses="$2" family="$3" xaddr
+	local ipv4 ipv4_negate ipset ipset_negate
+	local ipv6 ipv6_negate ipset6 ipset6_negate
+	local rule rule6 negate negate6 
 
 	case "$direction" in
 	src) xaddr="saddr" ;;
@@ -641,48 +665,40 @@ rule_addr() {
 		log warning "Rule contains an invalid family"
 		return 1
 	fi
-
 	parse_rule_ips "$addresses" || {
 		log warning "Rule contains an invalid ${direction}_ip"
 		return 1
 	}
-	if [ -n "$ipset$ipset_negate" ] && [ -n "$ipv4$ipv6$ipv4_negate$ipv6_negate" ]; then
-		log warning "Rules must not mix IP addresses and sets in the ${direction}_ip option"
-		return 1
-	fi
-	if [ -n "$ipv4$ipv4_negate" ] && [ "$family" = "ipv6" ]; then
+	if [ -n "$ipv4$ipv4_negate$ipset$ipset_negate" ] && [ "$family" = "ipv6" ]; then
 		log warning "Rules cannot combine an ipv4 ${direction}_ip with the 'ipv6' family option"
 		return 1
 	fi
-	if [ -n "$ipv6$ipv6_negate" ] && [ "$family" = "ipv4" ]; then
+	if [ -n "$ipv6$ipv6_negate$ipset6$ipset_negate6" ] && [ "$family" = "ipv4" ]; then
 		log warning "Rules cannot combine an ipv6 ${direction}_ip with the 'ipv4' family option"
 		return 1
 	fi
-	if [ "$(echo "$ipset" | wc -w)" -gt 1 ] || [ "$(echo "$ipset_negate" | wc -w)" -gt 1 ]; then
-		log warning "Rules must not contain more than one set for the ${direction}_ip option"
-		return 1
-	fi
 
-	[ -n "$ipv4" ] && rule="ip $xaddr $(nft_element_list "$ipv4")"
-	[ -n "$ipv4_negate" ] && rule="$rule ip $xaddr != $(nft_element_list "$ipv4_negate")"
+	# Address negate
+	[ -n "$ipv4_negate" ] && negate="ip $xaddr != $(nft_element_list "$ipv4_negate")"
+	[ -n "$ipv6_negate" ] && negate6="ip6 $xaddr != $(nft_element_list "$ipv6_negate")"
 
-	[ -n "$ipv6" ] && rule6="ip6 $xaddr $(nft_element_list "$ipv6")"
-	[ -n "$ipv6_negate" ] && rule6="$rule6 ip6 $xaddr != $(nft_element_list "$ipv6_negate")"
+	# Set negate
+	for ipset in $ipset_negate; do
+		negate="ip $xaddr != $ipset $negate"
+	done
+	for ipset in $ipset6_negate; do
+		negate6="ip6 $xaddr != $ipset $negate6"
+	done
 
-	[ -n "$ipset$ipset_negate" ] && case "$family" in
-	ipv4)
-		[ -n "$ipset" ] && rule="$rule ip $xaddr $ipset"
-		[ -n "$ipset_negate" ] && rule="$rule ip $xaddr != $ipset_negate"
-		;;
-	ipv6)
-		[ -n "$ipset" ] && rule6="$rule6 ip6 $xaddr $ipset"
-		[ -n "$ipset_negate" ] && rule6="$rule6 ip6 $xaddr != $ipset_negate"
-		;;
-	*)
-		log warning "Rules must contain the family option when a set is present in the ${direction}_ip option"
-		return 1
-		;;
-	esac
+	# Create an address rule per allowed IP/set
+	for ipset in $ipset; do
+		rule="$rule"$'\n'"ip $xaddr $ipset $negate"
+	done
+	for ipset in $ipset6; do
+		rule6="$rule6"$'\n'"ip6 $xaddr $ipset $negate6"
+	done
+	[ -n "$ipv4" ] && rule="$rule"$'\n'"ip $xaddr $(nft_element_list "$ipv4") $negate"
+	[ -n "$ipv6" ] && rule6="$rule6"$'\n'"ip6 $xaddr $(nft_element_list "$ipv6") $negate6"
 
 	eval "$xaddr"='$rule'
 	eval "$xaddr"6='$rule6'
@@ -757,16 +773,25 @@ create_user_rule() {
 	rule_verdict "$class" || error=1
 	[ "$error" = 0 ] || return 1
 
+	# Create rule and return if no src or dst address is specified
 	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
 		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $dport $iifname $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 		return 0
 	}
-	[ -n "$daddr$saddr" ] && {
-		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+
+	# Create rules for each src and dst address combination
+	emit_rules() {
+		local daddr_list="$1" saddr_list="$2"
+		[ -n "$daddr_list$saddr_list" ] || return 0
+		printf '%s\n' "${saddr_list:-}" | while IFS= read -r saddr || [ -n "$saddr" ]; do
+			printf '%s\n' "${daddr_list:-}" | while IFS= read -r daddr || [ -n "$daddr" ]; do
+				post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+			done
+		done
 	}
-	[ -n "$daddr6$saddr6" ] && {
-		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
-	}
+	emit_rules "$daddr" "$saddr"
+	emit_rules "$daddr6" "$saddr6"
+
 	return 0
 }
 
@@ -1025,8 +1050,8 @@ create_pre_include() {
 create_post_include() {
 	rm -f "$POST_INCLUDE"
 
-	config_foreach create_user_set set   # deprecating in favour of 'ipset' section name for consistency with fw4
-	config_foreach create_user_set ipset # section name consistent with fw4
+	local sets_ipv4 sets_ipv6
+	config_foreach create_user_set ipset
 	config_foreach_reverse create_user_rule rule
 
 	create_client_class_adoption_rules || return 1
