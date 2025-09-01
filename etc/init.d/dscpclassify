@@ -10,6 +10,17 @@ SERVICE_NAME="dscpclassify"
 TABLE="$SERVICE_NAME"
 CONFIG="$SERVICE_NAME"
 
+# Chain names
+CHAIN_CLIENT_CLASSIFY="client_classify"
+CHAIN_DYNAMIC_CLASSIFY="dynamic_classify"
+CHAIN_DYNAMIC_CLASSIFY_REPLY="dynamic_classify_reply"
+CHAIN_ESTABLISHED_CONNECTION="established_connection"
+CHAIN_RULE_CLASSIFY="rule_classify"
+CHAIN_BULK_CLIENT="bulk_client"
+CHAIN_BULK_CLIENT_REPLY="bulk_client_reply"
+CHAIN_HIGH_THROUGHPUT_SERVICE="high_throughput_service"
+CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY="high_throughput_service_reply"
+
 # Dynamic content
 DEBUG_FILE="/tmp/${SERVICE_NAME}.debug"
 INCLUDES_PATH="/tmp/etc/${SERVICE_NAME}.d"
@@ -314,11 +325,11 @@ check_set_name() {
 		return 1
 		;;
 	bulk_clients | bulk_clients6 | high_throughput_services | high_throughput_services6)
-		log warning "Sets cannot overwrite built-in $TABLE sets"
+		log warning "Sets cannot overwrite built-in $SERVICE_NAME sets"
 		return 1
 		;;
 	bulk_client_detect | bulk_client_detect6 | bulk_client_orig_classify | bulk_client_orig_classify6 | bulk_client_reply_classify | bulk_client_reply_classify6 | high_throughput_service_detect | high_throughput_service_detect6)
-		log warning "Sets cannot overwrite built-in $TABLE meter sets"
+		log warning "Sets cannot overwrite built-in $SERVICE_NAME meter sets"
 		return 1
 		;;
 	esac
@@ -784,7 +795,7 @@ create_user_rule() {
 
 	# Create rule and return if no saddr or daddr is specified
 	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
-		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $iifname $sport $oifname $dport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+		post_include "insert rule inet $TABLE $CHAIN_RULE_CLASSIFY $nfproto $l4proto $iifname $sport $oifname $dport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 		return 0
 	}
 
@@ -795,7 +806,7 @@ create_user_rule() {
 		printf '%s\n' "${saddr_list:-}" | while IFS= read -r saddr || [ -n "$saddr" ]; do
 			printf '%s\n' "${daddr_list:-}" | while IFS= read -r daddr || [ -n "$daddr" ]; do
 				[ -n "$saddr$daddr" ] || continue
-				post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $iifname $saddr $sport $oifname $daddr $dport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+				post_include "insert rule inet $TABLE $CHAIN_RULE_CLASSIFY $nfproto $l4proto $iifname $saddr $sport $oifname $daddr $dport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 			done
 		done
 	}
@@ -806,7 +817,7 @@ create_user_rule() {
 }
 
 destroy_client_class_adoption_rules() {
-	post_include "destroy chain inet $TABLE client_classify"
+	post_include "destroy chain inet $TABLE $CHAIN_CLIENT_CLASSIFY"
 }
 
 create_client_class_adoption_rules() {
@@ -844,18 +855,18 @@ create_client_class_adoption_rules() {
 	}
 
 	# Create client class adoption rules
-	post_include "add rule inet $TABLE client_classify $saddr ip dscp != $exclude_class ip dscp vmap @dscp_ct"
-	post_include "add rule inet $TABLE client_classify $saddr6 ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
+	post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr ip dscp != $exclude_class ip dscp vmap @dscp_ct"
+	post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr6 ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
 
 	# Create jump from input and postrouting chains
-	post_include "add rule inet $TABLE input ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump client_classify"
-	post_include "add rule inet $TABLE postrouting ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump client_classify"
+	post_include "add rule inet $TABLE input ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump $CHAIN_CLIENT_CLASSIFY"
+	post_include "add rule inet $TABLE postrouting ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump $CHAIN_CLIENT_CLASSIFY"
 }
 
 destroy_dynamic_classify_rules() {
-	post_include "destroy chain inet $TABLE dynamic_classify"
-	post_include "destroy chain inet $TABLE dynamic_classify_reply"
-	post_include "destroy chain inet $TABLE established_connection"
+	post_include "destroy chain inet $TABLE $CHAIN_DYNAMIC_CLASSIFY"
+	post_include "destroy chain inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY"
+	post_include "destroy chain inet $TABLE $CHAIN_ESTABLISHED_CONNECTION"
 }
 
 create_dynamic_classify_rules() {
@@ -869,13 +880,13 @@ create_dynamic_classify_rules() {
 		return 0
 	fi
 
-	post_include "add rule inet $TABLE input ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump dynamic_classify"
-	post_include "add rule inet $TABLE postrouting ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump dynamic_classify"
+	post_include "add rule inet $TABLE input ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump $CHAIN_DYNAMIC_CLASSIFY"
+	post_include "add rule inet $TABLE postrouting ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump $CHAIN_DYNAMIC_CLASSIFY"
 }
 
 destroy_bulk_client_rules() {
-	post_include "destroy chain inet $TABLE bulk_client"
-	post_include "destroy chain inet $TABLE bulk_client_reply"
+	post_include "destroy chain inet $TABLE $CHAIN_BULK_CLIENT"
+	post_include "destroy chain inet $TABLE $CHAIN_BULK_CLIENT_REPLY"
 
 	post_include "destroy set inet $TABLE bulk_clients"
 	post_include "destroy set inet $TABLE bulk_clients6"
@@ -923,29 +934,29 @@ create_bulk_client_rules() {
 	check_set_exists bulk_clients6 || post_include "add set inet $TABLE bulk_clients6 { type ipv6_addr . inet_service . inet_proto; flags timeout; }"
 
 	# Create threaded client detection rules
-	post_include "add rule inet $TABLE established_connection meter bulk_client_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients { ip daddr . th dport . meta l4proto timeout 30s }"
-	post_include "add rule inet $TABLE established_connection meter bulk_client_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter bulk_client_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients { ip daddr . th dport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter bulk_client_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
 
 	# Create threaded client classification rule chains
-	post_include "add chain inet $TABLE bulk_client"
-	post_include "add rule inet $TABLE bulk_client meter bulk_client_orig_classify { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
-	post_include "add rule inet $TABLE bulk_client meter bulk_client_orig_classify6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add chain inet $TABLE $CHAIN_BULK_CLIENT"
+	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT meter bulk_client_orig_classify { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT meter bulk_client_orig_classify6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
 
-	post_include "add chain inet $TABLE bulk_client_reply"
-	post_include "add rule inet $TABLE bulk_client_reply meter bulk_client_reply_classify { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
-	post_include "add rule inet $TABLE bulk_client_reply meter bulk_client_reply_classify6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add chain inet $TABLE $CHAIN_BULK_CLIENT_REPLY"
+	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT_REPLY meter bulk_client_reply_classify { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT_REPLY meter bulk_client_reply_classify6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
 
-	# Create jumps from dynamic_classify chain
-	post_include "add rule inet $TABLE dynamic_classify ip saddr . th sport . meta l4proto @bulk_clients goto bulk_client"
-	post_include "add rule inet $TABLE dynamic_classify ip6 saddr . th sport . meta l4proto @bulk_clients6 goto bulk_client"
+	# Create jumps from dynamic classify chains
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip saddr . th sport . meta l4proto @bulk_clients goto $CHAIN_BULK_CLIENT"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip6 saddr . th sport . meta l4proto @bulk_clients6 goto $CHAIN_BULK_CLIENT"
 
-	post_include "add rule inet $TABLE dynamic_classify_reply ip daddr . th dport . meta l4proto @bulk_clients goto bulk_client_reply"
-	post_include "add rule inet $TABLE dynamic_classify_reply ip6 daddr . th dport . meta l4proto @bulk_clients6 goto bulk_client_reply"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip daddr . th dport . meta l4proto @bulk_clients goto $CHAIN_BULK_CLIENT_REPLY"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip6 daddr . th dport . meta l4proto @bulk_clients6 goto $CHAIN_BULK_CLIENT_REPLY"
 }
 
 destroy_high_throughput_service_rules() {
-	post_include "destroy chain inet $TABLE high_throughput_service"
-	post_include "destroy chain inet $TABLE high_throughput_service_reply"
+	post_include "destroy chain inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE"
+	post_include "destroy chain inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
 
 	post_include "destroy set inet $TABLE high_throughput_services"
 	post_include "destroy set inet $TABLE high_throughput_services6"
@@ -993,28 +1004,28 @@ create_high_throughput_service_rules() {
 	check_set_exists high_throughput_services6 || post_include "add set inet $TABLE high_throughput_services6 { type ipv6_addr . ipv6_addr . inet_service . inet_proto; flags timeout; }"
 
 	# Create threaded service detection rules
-	post_include "add rule inet $TABLE established_connection meter high_throughput_service_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
-	post_include "add rule inet $TABLE established_connection meter high_throughput_service_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter high_throughput_service_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter high_throughput_service_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
 
 	# Create threaded service classification rule chains
-	post_include "add chain inet $TABLE high_throughput_service"
-	post_include "add rule inet $TABLE high_throughput_service ct original bytes < $min_bytes return"
-	post_include "add rule inet $TABLE high_throughput_service update @high_throughput_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"
-	post_include "add rule inet $TABLE high_throughput_service update @high_throughput_services6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }"
-	post_include "add rule inet $TABLE high_throughput_service ct mark set ct mark | \$${class} return"
+	post_include "add chain inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE ct original bytes < $min_bytes return"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE update @high_throughput_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE update @high_throughput_services6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE ct mark set ct mark | \$${class} return"
 
-	post_include "add chain inet $TABLE high_throughput_service_reply"
-	post_include "add rule inet $TABLE high_throughput_service_reply ct reply bytes < $min_bytes return"
-	post_include "add rule inet $TABLE high_throughput_service_reply update @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }"
-	post_include "add rule inet $TABLE high_throughput_service_reply update @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }"
-	post_include "add rule inet $TABLE high_throughput_service_reply ct mark set ct mark | \$${class} return"
+	post_include "add chain inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY ct reply bytes < $min_bytes return"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY update @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY update @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY ct mark set ct mark | \$${class} return"
 
-	# Create jumps from dynamic_classify chain
-	post_include "add rule inet $TABLE dynamic_classify ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto @high_throughput_services goto high_throughput_service"
-	post_include "add rule inet $TABLE dynamic_classify ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto @high_throughput_services6 goto high_throughput_service"
+	# Create jumps from dynamic classify chains
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto @high_throughput_services goto $CHAIN_HIGH_THROUGHPUT_SERVICE"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto @high_throughput_services6 goto $CHAIN_HIGH_THROUGHPUT_SERVICE"
 
-	post_include "add rule inet $TABLE dynamic_classify_reply ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto @high_throughput_services goto high_throughput_service_reply"
-	post_include "add rule inet $TABLE dynamic_classify_reply ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto @high_throughput_services6 goto high_throughput_service_reply"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto @high_throughput_services goto $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto @high_throughput_services6 goto $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
 }
 
 create_dscp_mark_rule() {
