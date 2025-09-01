@@ -668,7 +668,7 @@ rule_addr() {
 	local direction="$1" addresses="$2" family="$3" xaddr
 	local ipv4 ipv4_negate ipset ipset_negate
 	local ipv6 ipv6_negate ipset6 ipset6_negate
-	local rule rule6 negate negate6 
+	local rule_list rule6_list negate negate6 
 
 	case "$direction" in
 	src) xaddr="saddr" ;;
@@ -704,24 +704,24 @@ rule_addr() {
 
 	# Set negate
 	for ipset in $ipset_negate; do
-		negate="ip $xaddr != $ipset $negate"
+		negate="${negate:+$negate }ip $xaddr != $ipset"
 	done
 	for ipset in $ipset6_negate; do
-		negate6="ip6 $xaddr != $ipset $negate6"
+		negate6="${negate6:+$negate6 }ip6 $xaddr != $ipset"
 	done
 
 	# Create an address rule per allowed IP/set
 	for ipset in $ipset; do
-		rule="$rule"$'\n'"ip $xaddr $ipset $negate"
+		rule_list=${rule_list:+${rule_list}$'\n'}"ip $xaddr $ipset${negate:+ $negate}"
 	done
 	for ipset in $ipset6; do
-		rule6="$rule6"$'\n'"ip6 $xaddr $ipset $negate6"
+		rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip $xaddr $ipset${negate6:+ $negate6}"
 	done
-	[ -n "$ipv4" ] && rule="$rule"$'\n'"ip $xaddr $(nft_element_list "$ipv4") $negate"
-	[ -n "$ipv6" ] && rule6="$rule6"$'\n'"ip6 $xaddr $(nft_element_list "$ipv6") $negate6"
+	[ -n "$ipv4" ] && rule_list=${rule_list:+${rule_list}$'\n'}"ip $xaddr $(nft_element_list "$ipv4")${negate:+ $negate}"
+	[ -n "$ipv6" ] && rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip6 $xaddr $(nft_element_list "$ipv6")${negate6:+ $negate6}"
 
-	eval "$xaddr"='$rule'
-	eval "$xaddr"6='$rule6'
+	eval "$xaddr"_list='$rule_list'
+	eval "$xaddr"6_list='$rule6_list'
 	return 0
 }
 
@@ -761,7 +761,8 @@ rule_verdict() {
 create_user_rule() {
 	local section="$1"
 	local enabled family proto direction device dest dest_ip dest_port src src_ip src_port counter class name
-	local nfproto l4proto oifname daddr daddr6 dport iifname saddr saddr6 sport verdict
+	local nfproto l4proto iifname sport oifname dport verdict
+	local saddr_list saddr6_list daddr_list daddr6_list
 	local error=0
 
 	config_get_bool enabled "$section" enabled 1
@@ -810,8 +811,8 @@ create_user_rule() {
 			done
 		done
 	}
-	for_each_saddr_daddr "$saddr" "$daddr"
-	for_each_saddr_daddr "$saddr6" "$daddr6"
+	for_each_saddr_daddr "$saddr_list" "$daddr_list"
+	for_each_saddr_daddr "$saddr6_list" "$daddr6_list"
 
 	return 0
 }
@@ -824,7 +825,7 @@ create_client_class_adoption_rules() {
 	local enabled=1
 	local exclude_class_defaults="cs6 cs7"
 	local exclude_class src_ip family
-	local saddr saddr6
+	local saddr_list saddr6_list
 
 	config_get_bool enabled "$client_class_adoption_config" enabled "$enabled"
 	[ "$enabled" = 1 ] || {
@@ -855,8 +856,12 @@ create_client_class_adoption_rules() {
 	}
 
 	# Create client class adoption rules
-	post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr ip dscp != $exclude_class ip dscp vmap @dscp_ct"
-	post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr6 ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
+	for saddr in $saddr_list; do
+		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr ip dscp != $exclude_class ip dscp vmap @dscp_ct"
+	done
+	for saddr6 in $saddr6_list; do
+		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr6 ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
+	done
 
 	# Create jump from input and postrouting chains
 	post_include "add rule inet $TABLE input ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump $CHAIN_CLIENT_CLASSIFY"
