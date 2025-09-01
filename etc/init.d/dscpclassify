@@ -784,25 +784,23 @@ create_user_rule() {
 
 	# Create rule and return if no saddr or daddr is specified
 	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
-		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $dport $iifname $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $iifname $sport $oifname $dport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 		return 0
 	}
 
-	# Function for creating a rule for each address combination
+	# Create rules for each saddr and daddr combination
 	for_each_saddr_daddr() {
-		local daddr_list="$1" saddr_list="$2"
-		[ -n "$daddr_list$saddr_list" ] || return 0
+		local saddr_list="$1" daddr_list="$2"
+		[ -n "$saddr_list$daddr_list" ] || return 0
 		printf '%s\n' "${saddr_list:-}" | while IFS= read -r saddr || [ -n "$saddr" ]; do
 			printf '%s\n' "${daddr_list:-}" | while IFS= read -r daddr || [ -n "$daddr" ]; do
 				[ -n "$saddr$daddr" ] || continue
-				post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+				post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $iifname $saddr $sport $oifname $daddr $dport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 			done
 		done
 	}
-
-	# Create rules for addr and addr6 combinations
-	for_each_saddr_daddr "$daddr" "$saddr"
-	for_each_saddr_daddr "$daddr6" "$saddr6"
+	for_each_saddr_daddr "$saddr" "$daddr"
+	for_each_saddr_daddr "$saddr6" "$daddr6"
 
 	return 0
 }
