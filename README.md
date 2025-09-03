@@ -1,39 +1,44 @@
-# DSCP Classify
-An nftables based service for applying DSCP classifications to connections, compatible with OpenWrt's firewall4 for dynamically setting DSCP packet marks (this only works in OpenWrt 22.03 and above).
+# What is DSCP Classify? ⭐
+DSCP Classify is a service for applying DSCP class to connection packets (supporting **OpenWrt 22.03 and above**).\
+It can be used with SQM layer cake QoS to manage priority of client connections (VoIP/gaming/downloads/P2P etc) and reduce [Bufferbloat](https://en.wikipedia.org/wiki/Bufferbloat).
 
-This should be used in conjunction with layer-cake SQM queue with ctinfo configured to restore DSCP on the device ingress.
-The dscpclassify service uses the last 8 bits of the conntrack mark (0x000000ff).
+The service supports both **automatic** and **user rule** classification of connections.
 
-## Classification modes
-The service supports three modes for classifying and DSCP marking connections.
+DSCP Classify can mark LAN destined packets with [WMM mapped](https://datatracker.ietf.org/doc/html/rfc8325#section-4.3) classes to improve transmit prioritisation with 3rd party WiFi access points and switches, see the [wmm_mark_lan](#section-service) service configuration option.
 
-### User rules
-The service will first attempt to classify new connections using rules specified by the user in the config file.<br />
-These follow a similar syntax to the OpenWrt firewall config and can match upon source/destination ports and IPs, firewall zones etc.<br />
-The rules support the use of nft sets, which could be dynamically updated from external sources such as dsnmasq. <br />
+_Users of layer-cake SQM should install the [layer_cake_ct](#layer_cake_ctqos) SQM script for setting DSCP marks on inbound packets, see [SQM Configuration](#sqm-configuration-)❗_
 
-### Client DSCP hinting
-The service can be configured to apply the DSCP mark supplied by a non WAN originating client.<br />
-This function ignores CS6 and CS7 classes to avoid abuse from inappropriately configed LAN clients such as IoT devices.
+## User Rules 📝
+You can create rules to classify new connections in the service [config file](#configuration-%EF%B8%8F).\
+These use a similar syntax to the OpenWrt firewall config and can match source and destination ports, addresses, ipsets, firewall zones etc.
 
-### Dynamic classification
-Connections that do not match a pre-specified rule will be dynamically classified by the service via two mechanisms:
+More information and examples can be found in the [rules section](#section-rule).
 
-* Multi-connection client port detection for detecting P2P traffic
-  * These connections are classified as Low Effort (LE) by default and therefore prioritised below Best Effort traffic when using the layer-cake qdisc.
-* Multi-threaded service detection for identifying high-throughput downloads from services such as Steam/Windows Update
-  * These connections are classified as High-Throughput (AF13) by default and therefore prioritised as follows by cake:
-    * diffserv3/4: Equal to besteffort (CS0) traffic.
-    * diffserv8: Below besteffort (CS0) traffic, but above low effort (LE) traffic.
+## Automatic Classification 🪄
+Connections that don't match a rule will be automatically classified by the service using one of the below methods.
 
-### External classification
-The service will respect DSCP classification stored by an external service in a connection's conntrack bits, this could include services such as netifyd.
+### Client class adoption ✨
+The service can automatically adopt the DSCP mark supplied by a non-WAN client.\
+By default this ignores classes CS6 and CS7 to avoid abuse from clients such as IoT devices.
 
-## Service architecture
-![image](https://user-images.githubusercontent.com/46714706/188151111-9167e54d-482e-4584-b43b-0759e0ad7561.png)
+### Bulk client detection for P2P traffic 🌎
+These connections are one of the largest causes of [Bufferbloat](https://en.wikipedia.org/wiki/Bufferbloat), as a result they are classified as **Low Effort (LE)** by default and therefore prioritised **below Best Effort (BE/DF/CS0)** traffic when using the layer-cake qdisc.
 
-## Service installation
-To install the dscpclassify service via command line you can use the following:
+### High Throughput service detection for Steam downloads, cloud storage etc 🚛
+Services such as Steam make use of parralel connections to maximise download bandwith, this can also cause bufferbloat and so these connections are classified as **High-Throughput (AF13)** by default and prioritised as follows by cake:
+  * **diffserv8**: prioritised **below Best Effort (BE/DF/CS0)** traffic and **above Low Effort (LE)** traffic
+  * **diffserv3/4**: prioritised **equal to Best Effort (BE/DF/CS0)** traffic
+
+## Service Architecture 🏗️ 
+
+The dscpclassify service uses the last 8 bits of the conntrack mark (0x000000**ff**), leaving the remaining bits for use by other applications.
+
+<img src="https://user-images.githubusercontent.com/46714706/188151111-9167e54d-482e-4584-b43b-0759e0ad7561.png" width="80%">
+
+# Service Installation ⚙️
+To install dscpclassify service via command line you can use the following sets of commands.
+
+### dscpclassify 
 
 ```
 repo="https://raw.githubusercontent.com/jeverley/dscpclassify/main"
@@ -53,9 +58,8 @@ chmod +x "/etc/init.d/dscpclassify"
 /etc/init.d/dscpclassify start
 ```
 
-Ingress DSCP marking requires the SQM queue setup script 'layer_cake_ct.qos' and the package 'kmod-sched-ctinfo'.
-
-To install these via command line you can use the following:
+### layer_cake_ct.qos
+#### _Ingress DSCP marking for SQM cake requires installation and [configuration](#sqm-configuration-) of 'layer_cake_ct.qos' and the package 'kmod-sched-ctinfo'❗_
 
 ```
 repo="https://raw.githubusercontent.com/jeverley/dscpclassify/main"
@@ -64,65 +68,152 @@ opkg install kmod-sched-ctinfo
 wget "$repo/usr/lib/sqm/layer_cake_ct.qos" -O "/usr/lib/sqm/layer_cake_ct.qos"
 wget "$repo/usr/lib/sqm/layer_cake_ct.qos.help" -O "/usr/lib/sqm/layer_cake_ct.qos.help"
 ```
+# Configuration ⚙️
+The service configuration is located in '/etc/config/dscpclassify'.
 
-## Service configuration
-The user rules in '/etc/config/dscpclassify' use the same syntax as OpenWrt's firewall config, the 'class' option is used to specified the desired DSCP.
+**A working default configuration is provided with the service which should work for most users.**
 
-A working default configuration is provided with the service.
+### Section "service"
+|Name | Type | Required | Default | Description|
+|--- | --- | --- | --- | ---|
+|class_low_effort | string | no | le <sup>1</sup> | The default DSCP class applied to low effort connections |
+|class_high_throughput | string | no | af13 | The default DSCP class applied to high-throughput connections |
+|wmm_mark_lan | boolean | no | 0 | Mark packets going out of LAN interfaces with DSCP values respective of [WMM (RFC-8325)](https://datatracker.ietf.org/doc/html/rfc8325#section-4.3) |
+|**Advanced** | | | | _**The below options are typically only required on non-standard setups**_ |
+|_lan_zone_ | list | no | lan | Used to specify LAN firewall zones (lan/guest etc) |
+|_wan_zone_ | list | no | wan | Used to specify WAN firewall zones |
+|_lan_device_ | list | no | | Used to specify LAN network interfaces (L3 physical interface i.e. `br-lan`) |
+|_wan_device_ | list | no | | Used to specify WAN network interfaces (L3 physical interface) |
 
-**The service supports the following global classification options:**
+_1. When running on older OpenWrt releases with kernels < 5.13 the service defaults to class CS1 for low effort connections_
 
-|  Config option | Description  | Type  | Default  |
-|---|---|---|---|
-| class_bulk | The class applied to threaded bulk clients | string | le |
-| class_high_throughput | The class applied to threaded high-throughput services | string | af13 |
-| client_hints | Adopt the DSCP class supplied by a non-WAN client (this exludes CS6 and CS7 classes to avoid abuse) | boolean | 1 |
-| threaded_client_min_bytes | The total bytes before a threaded client port (i.e. P2P) is classified as bulk | uint | 10000 |
-| threaded_client_min_connections | The number of established connections for a client port to be considered threaded | uint | 10 |
-| threaded_service_min_bytes | The total bytes before a threaded service's connection is classed as high-throughput | uint | 1000000 |
-| threaded_service_min_connections | The number of established connections for a service to be considered threaded | uint | 3 |
-| lan_device | Manually specify devices that the service should treat as LAN | string |  |
-| lan_zone | Manually specify firewall zones that the service should treat as LAN | string | lan |
-| wan_device | Manually specify devices that the service should treat as WAN | string |  |
-| wan_zone | Manually specify firewall zones that the service should treat as WAN | string | wan |
-| wmm | When enabled the service will mark LAN bound packets with DSCP values respective of WMM (RFC-8325) | boolean |  0 |
+### Section "client_class_adoption"
+|Name | Type | Required | Default | Description|
+|--- | --- | --- | --- | ---|
+|enabled | boolean | no | 1 | Adopt the DSCP class supplied by a non-WAN client |
+|exclude_class | list | no | cs6, cs7 | Classes to ignore from client class adoption |
+|src_ip | list | no | | Include/Exclude source IPs for class adoption, preface excluded IPs with ! |
 
-**Below is an example user rule:**
+### Section "bulk_client_detection"
+|Name | Type | Required | Default | Description|
+|--- | --- | --- | --- | ---|
+|enabled | boolean | no | 1 | Detect and classify bulk client connections (i.e. P2P)|
+|class | string | no | | Override the service level class_high_throughput setting |
+|**Advanced** | | | | _**The default configuration for the below should work for most users**_ |
+|_min_connections_ | number | no | 10 | Minimum established connections for a client port to be considered as bulk |
+|_min_bytes_ | number | no | 10000 | Minimum bytes before a client port is classified as bulk |
+
+### Section "high_throughput_service_detection"
+|Name | Type | Required | Default | Description|
+|--- | --- | --- | --- | ---|
+|enabled | boolean | no | 1 | Detect and classify high throughput service connections (i.e. Windows Update/Steam downloads) |
+|class | string | no | | Override the service level class_high_throughput setting |
+|**Advanced** | | | | _**The default configuration for the below should work for most users**_ |
+|_min_connections_ | number | no | 3 | Minimum established connections for a service to be considered as high-throughput |
+|_min_bytes_ | number | no | 1000000 | Minimum bytes before the connection is classified as high-throughput |
+
+### Section "rule"
+The rule sections in `/etc/config/dscpclassify` use the same syntax as OpenWrt's firewal, the **class** option is used to specified the desired DSCP.\
+The OpenWrt fw4 rule syntax is outlined in the [OpenWrt Wiki](https://openwrt.org/docs/guide-user/firewall/firewall_configuration#rules), dscpclassify default rules can be viewed [here](https://github.com/jeverley/dscpclassify/blob/main/etc/config/dscpclassify)'. 
+
+|Name | Type | Required | Default | Description|
+|--- | --- | --- | --- | ---|
+|enabled | boolean | no | 1 | Enable or disable rule. | 
+|class | string | **yes** | | The class to apply to connections matching this rule. |
+|name | string | no | | Name of the rule. |
+|family | string | no | | Specifies the address family (`ipv4`, `ipv6` or `any`) for which the rules are generated. |
+|proto | list | no | | Match traffic using the given protocol. Can be one (or several when using list syntax) of `tcp`, `udp`, `udplite`, `icmp`, `esp`, `ah`, `sctp`, or `all`. A protocol name from /etc/protocols is also allowed. |
+|dest | list | no | | Specifies the traffic destination firewall zone. Refers to one of the defined zone names. |
+|dest_ip | list | no | | Match traffic directed to the specified destination IP address, CIDR notations can be used. IP set names can be specified with the `@` prefix<sup>1</sup>. |
+|dest_port | list | no | | Match traffic to the specified source port or port range. |
+|src | list | no | | Specifies the traffic source firewall zone. Refers to one of the defined zone names. |
+|src_ip | list | no | | Match traffic from the specified source IP address, CIDR notations can be used. ipset names can be specified with the `@` prefix<sup>1</sup>. |
+|src_port | list | no | | Match traffic from the specified source port or port range. |
+|device | string | no | | Match traffic going in/out of a particular L3 device. |
+|direction | string | no | | Must be used in conjunction with `device`, specifies whether to match traffic travelling `in` or `out`. |
+|counter | boolean | no | 0 | Enables an nft counter that counts connections matched by the rule. |
+
+_1. Vervsions ≥ 2.0 allow a mix of ipsets, ipv4 and ipv6 addresses._
+
+#### Example user rule 📃
 
 ```
 config rule
-	option name 'DNS'
-	list proto 'tcp'
-	list proto 'udp'
-	list dest_port '53'
-	list dest_port '853'
-	list dest_port '5353'
-	option class 'cs5'
-	option counter '0'
+	option name	'DNS'
+	list proto	'tcp'
+	list proto	'udp'
+	list dest_port	'53'
+	list dest_port	'853'
+	list dest_port	'5353'
+	list dest_ip	'8.8.8.8'
+	list dest_ip	'2001:4860:4860::8888'
+	list dest_ip	'@DoH'
+	list dest_ip	'@DoH6'
+	option class	'cs5'
+	option counter	'0'
 ```
-The OpenWrt firewall syntax is outlined here https://openwrt.org/docs/guide-user/firewall/firewall_configuration
 
-The counter option can be enabled to count the number of matched connections for a rule.
+### Section "ipset"
+The ipset sections in `/etc/config/dscpclassify` use a similar syntax to OpenWrt's firewall, they can be used in conjunction with rules for dynamically populated ip matching.\
+The OpenWrt fw4 ipset syntax is outlined in the [OpenWrt Wiki](https://openwrt.org/docs/guide-user/firewall/firewall_configuration#options_fw4), dscpclassify default rules can be viewed [here](https://github.com/jeverley/dscpclassify/blob/main/etc/config/dscpclassify).
 
-## SQM configuration
+The key difference is that ipsets can be referenced using dest_ip/src_ip, with their name prefixed with '@'.
+
+|Name | Type | Required | Default | Description|
+|--- | --- | --- | --- | ---|
+|enabled | boolean | no | 1 | Allows to disable the declaration of the ipset without the need to delete the section. | 
+|name | string | **yes** | | Name of the IP set. |
+|comment | string | no | | A user defined comment associated with the set. |
+|family | string | no | | Specifies the address family (`ipv4`, `ipv6`) for the IP set, if absent the service tries to identify this from the address entries<sup>1</sup>. |
+|maxelem | uint | no | | Limits the number of entries that can be added to the set. |
+|timeout | uint | no | | Specifies the default timeout for entries added to the set. A value of 0 enables the timeout capability flag on the set, but does not put a timeout on entries. |
+|entry | list | no | | IP address or CIDR notation. |
+|loadfile | string | no | | A path URL on the openwrt filesystem to a file containing a list of CIDRs. |
+
+_1. Vervsions ≥ 2.0 will attempt to autodetect an ipset's family if the option is not specified._
+
+#### Example ipset and rule 📃
+
+```
+config ipset
+	option name 'ms_teams'
+	list entry '13.107.64.0/18'
+	list entry '52.112.0.0/14'
+	list entry '52.122.0.0/15'
+
+config ipset
+	option name 'ms_teams6'
+	option family 'ipv6'
+	list entry '2603:1063::/39'
+
+config rule
+	option name 'Microsoft Teams Voice'
+	option proto 'udp'
+	option src_port '50000-50019'
+	option dest_port '3478-3481'
+	list dest_ip '@ms_teams'
+	list dest_ip '@ms_teams6'
+	option class 'ef'
+```
+
+# SQM configuration 🚀
 
 The **'layer_cake_ct.qos'** queue setup script must be selected for your wan device in SQM setup,
 
-It is important that **Squash DSCP** and **Ignore DSCP** on ingress are **not enabled** in SQM setup otherwise cake will ignore the service's DSCP classes.
+It is important that **Ignore DSCP** on ingress is **Allow** in SQM setup otherwise cake will ignore the service's DSCP classes.
 
-![image](https://user-images.githubusercontent.com/46714706/190709086-c2e820ed-11ed-4be4-8e57-fba4ab6db190.png)
-![image](https://user-images.githubusercontent.com/46714706/210797512-a2419605-5bd4-469b-8c99-2d881c2c8706.png)
-
-<br />
-
-**Below is a tested working SQM config for use with the service:**
+### Below is validated working SQM config for use with the service
 
 | Config parameter | Value |
 | ----------- | ----------- |
 | qdisc_advanced | 1 |
-| **squash_dscp** | 0, to ensure cake does not remove ingress packet DSCP values|
-| **squash_ingress** | 0, to ensure cake looks at packet marks on ingress |
+| squash_dscp | 0, to ensure cake does not remove ingress packet DSCP values|
+| **squash_ingress** | **0, to ensure cake looks at packet marks on ingress** |
 | qdisc_really_really_advanced | 1 |
 | iqdisc_opts | nat dual-dsthost ingress diffserv4 |
 | eqdisc_opts | nat dual-srchost ack-filter diffserv4 |
-| **script** | layer_cake_ct.qos |
+| **script** | **layer_cake_ct.qos** |
+<br />
+
+<img src="https://user-images.githubusercontent.com/46714706/190709086-c2e820ed-11ed-4be4-8e57-fba4ab6db190.png" width="50%">
+<img src="https://user-images.githubusercontent.com/46714706/210797512-a2419605-5bd4-469b-8c99-2d881c2c8706.png" width="50%">

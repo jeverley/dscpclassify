@@ -29,33 +29,33 @@ table inet dscpclassify {
         }
     }
 
-    ## Conntrack mark to WMM class vmap (RFC-8325)
+    ## Conntrack mark to WMM class vmap [RFC-8325 section-4.3]
     map ct_wmm {
         type mark : verdict
         elements = {
-            $cs0 : goto dscp_set_cs0,   # WMM BE
-            $lephb : goto dscp_set_le,  # WMM BK
-            $cs1 : goto dscp_set_cs1,   # WMM BK
-            $af11 : goto dscp_set_cs0,  # WMM BE
-            $af12 : goto dscp_set_cs0,  # WMM BE
-            $af13 : goto dscp_set_cs0,  # WMM BE
-            $cs2 : goto dscp_set_cs0,   # WMM BE
-            $af21 : goto dscp_set_cs3,  # WMM BE
-            $af22 : goto dscp_set_cs3,  # WMM BE
-            $af23 : goto dscp_set_cs3,  # WMM BE
-            $cs3 : goto dscp_set_cs4,   # WMM VI
-            $af31 : goto dscp_set_cs4,  # WMM VI
-            $af32 : goto dscp_set_cs4,  # WMM VI
-            $af33 : goto dscp_set_cs4,  # WMM VI
-            $cs4 : goto dscp_set_cs4,   # WMM VI
-            $af41 : goto dscp_set_cs4,  # WMM VI
-            $af42 : goto dscp_set_cs4,  # WMM VI
-            $af43 : goto dscp_set_cs4,  # WMM VI
-            $cs5 : goto dscp_set_cs5,   # WMM VI
-            $va : goto dscp_set_cs6,    # WMM VO
-            $ef : goto dscp_set_cs6,    # WMM VO
-            $cs6 : goto dscp_set_cs7,   # WMM VO
-            $cs7 : goto dscp_set_cs7,   # WMM VO
+            $cs0 : goto dscp_set_cs0,   # AC_BE (Best Effort)
+            $lephb : goto dscp_set_cs1, # AC_BK (Background) - [RFC-8622 section-11]
+            $cs1 : goto dscp_set_cs1,   # AC_BK (Background)
+            $af11 : goto dscp_set_cs0,  # AC_BE (Best Effort)
+            $af12 : goto dscp_set_cs0,  # AC_BE (Best Effort)
+            $af13 : goto dscp_set_cs0,  # AC_BE (Best Effort)
+            $cs2 : goto dscp_set_cs0,   # AC_BE (Best Effort)
+            $af21 : goto dscp_set_cs3,  # AC_BE (Best Effort)
+            $af22 : goto dscp_set_cs3,  # AC_BE (Best Effort)
+            $af23 : goto dscp_set_cs3,  # AC_BE (Best Effort)
+            $cs3 : goto dscp_set_cs4,   # AC_VI (Video)
+            $af31 : goto dscp_set_cs4,  # AC_VI (Video)
+            $af32 : goto dscp_set_cs4,  # AC_VI (Video)
+            $af33 : goto dscp_set_cs4,  # AC_VI (Video)
+            $cs4 : goto dscp_set_cs4,   # AC_VI (Video)
+            $af41 : goto dscp_set_cs4,  # AC_VI (Video)
+            $af42 : goto dscp_set_cs4,  # AC_VI (Video)
+            $af43 : goto dscp_set_cs4,  # AC_VI (Video)
+            $cs5 : goto dscp_set_cs5,   # AC_VI (Video)
+            $va : goto dscp_set_cs6,    # AC_VO (Voice)
+            $ef : goto dscp_set_cs6,    # AC_VO (Voice)
+            $cs6 : goto dscp_set_cs7,   # AC_VO (Voice)
+            $cs7 : goto dscp_set_cs7,   # AC_VO (Voice)
         }
     }
 
