@@ -402,7 +402,7 @@ parse_rule_ips() {
 		return 2
 	}
 
-        # shellcheck disable=SC2086
+	# shellcheck disable=SC2086
 	for i in $(printf '%s\n' $addresses | sort -u); do
 		# ipv4 address
 		check_addr4 "$i" && {
@@ -549,13 +549,13 @@ determine_set_family() {
 		elif check_addr6 "$addr"; then
 			addr_family="ipv6"
 		else
-			log warning "ipset {$name:+$name }contains an invalid address: $addr"
+			log warning "ipset ${name:+$name }contains an invalid address: $addr"
 			continue
 		fi
 		if [ -z "$_family" ]; then
 			_family="$addr_family"
 		elif [ "$_family" != "$addr_family" ]; then
-			log warning "ipset {$name:+$name }contains both IPv4 and IPv6 addresses"
+			log warning "ipset ${name:+$name }contains both ipv4 and IPv6 addresses"
 			return 1
 		fi
 	done
@@ -590,12 +590,12 @@ create_user_set() {
 	check_set_size "$size" || error=1
 
 	if [ -n "$family" ] && ! check_family "$family"; then
-		log warning "ipset {$name:+$name }contains an invalid family"
+		log warning "ipset ${name:+$name }contains an invalid family"
 		error=1
 	fi
 	parse_set_loadfile || error=1
 	determine_set_family "$entries $loadfile_entries" || {
-		log warning "Could not determine the family of ipset{$name:+ $name}"
+		log warning "Could not determine the family of ipset ${name:+$name }"
 		error=1
 	}
 
@@ -711,22 +711,22 @@ rule_addr() {
 	[ -n "$addresses" ] || return 0
 
 	if [ -n "$family" ] && ! check_family "$family"; then
-	        # shellcheck disable=SC2016
-		log warning "Rule ${name:+'$name '}contains an invalid family"
+		# shellcheck disable=SC2016
+		log warning "Rule ${name:+'$name' }contains an invalid family"
 		return 1
 	fi
 	parse_rule_ips "$addresses" || {
-	        # shellcheck disable=SC2016
-		log warning "Rule ${name:+'$name '}contains an invalid ${direction}_ip"
+		# shellcheck disable=SC2016
+		log warning "Rule ${name:+'$name' }contains an invalid ${direction}_ip"
 		return 1
 	}
 	if [ -n "$ipv4$ipv4_negate$ipset$ipset_negate" ] && [ "$family" = "ipv6" ]; then
-	        # shellcheck disable=SC2016
+		# shellcheck disable=SC2016
 		log warning "Rules cannot combine an ipv4 ${direction}_ip with the 'ipv6' family option${name:+, rule: '$name'}"
 		return 1
 	fi
-	if [ -n "$ipv6$ipv6_negate$ipset6$ipset_negate6" ] && [ "$family" = "ipv4" ]; then
-	        # shellcheck disable=SC2016
+	if [ -n "$ipv6$ipv6_negate$ipset6$ipset6_negate" ] && [ "$family" = "ipv4" ]; then
+		# shellcheck disable=SC2016
 		log warning "Rules cannot combine an ipv6 ${direction}_ip with the 'ipv4' family option${name:+, rule: '$name'}"
 		return 1
 	fi
