@@ -106,7 +106,7 @@ _1. When running on older OpenWrt releases with kernels < 5.13 the service defau
 ### Section "high_throughput_service_detection"
 |Name | Type | Required | Default | Description|
 |--- | --- | --- | --- | ---|
-|enabled | boolean | no | 1 | Detect and classify high throughput service connections (i.e. Windows Update/Steam downloads) 
+|enabled | boolean | no | 1 | Detect and classify high throughput service connections (i.e. Windows Update/Steam downloads) |
 |class | string | no | | Override the service level class_high_throughput setting |
 |**Advanced** | | | | _**The default configuration for the below should work for most users**_ |
 |_min_connections_ | number | no | 3 | Minimum established connections for a service to be considered as high-throughput |
@@ -116,7 +116,24 @@ _1. When running on older OpenWrt releases with kernels < 5.13 the service defau
 The rule sections in `/etc/config/dscpclassify` use the same syntax as OpenWrt's firewal, the **class** option is used to specified the desired DSCP.\
 The OpenWrt fw4 rule syntax is outlined in the [OpenWrt Wiki](https://openwrt.org/docs/guide-user/firewall/firewall_configuration#rules), dscpclassify default rules can be viewed [here](https://github.com/jeverley/dscpclassify/blob/main/etc/config/dscpclassify)'. 
 
-The rules support matching source/destination addresses in nft **sets**, these can be dynamically updated from external sources such as dnsmasq.
+|Name | Type | Required | Default | Description|
+|--- | --- | --- | --- | ---|
+|enabled | boolean | no | 1 | Enable or disable rule. | 
+|class | string | **yes** | | The class to apply to connections matching this rule. |
+|name | string | no | | Name of the rule. |
+|family | string | no | | Specifies the address family (`ipv4`, `ipv6` or `any`) for which the rules are generated. |
+|proto | list | no | | Match traffic using the given protocol. Can be one (or several when using list syntax) of `tcp`, `udp`, `udplite`, `icmp`, `esp`, `ah`, `sctp`, or `all`. A protocol name from /etc/protocols is also allowed. |
+|dest | list | no | | Specifies the traffic destination firewall zone. Refers to one of the defined zone names. |
+|dest_ip | list | no | | Match traffic directed to the specified destination IP address, CIDR notations can be used. IP set names can be specified with the `@` prefix<sup>1</sup>. |
+|dest_port | list | no | | Match traffic to the specified source port or port range. |
+|src | list | no | | Specifies the traffic source firewall zone. Refers to one of the defined zone names. |
+|src_ip | list | no | | Match traffic from the specified source IP address, CIDR notations can be used. ipset names can be specified with the `@` prefix<sup>1</sup>. |
+|src_port | list | no | | Match traffic from the specified source port or port range. |
+|device | string | no | | Match traffic going in/out of a particular L3 device. |
+|direction | string | no | | Must be used in conjunction with `device`, specifies whether to match traffic travelling `in` or `out`. |
+|counter | boolean | no | 0 | Enables an nft counter that counts connections matched by the rule. |
+
+_1. Vervsions ≥ 2.0 allow a mix of ipsets, ipv4 and ipv6 addresses._
 
 #### Example user rule 📃
 
@@ -135,15 +152,25 @@ config rule
 	option class	'cs5'
 	option counter	'0'
 ```
-The counter option can be enabled to count the number of matched connections for a rule.
-
-_**Vervsions ≥ 2.0 allow a mix of ipsets, ipv4 and ipv6 addresses.**_
 
 ### Section "ipset"
 The ipset sections in `/etc/config/dscpclassify` use a similar syntax to OpenWrt's firewall, they can be used in conjunction with rules for dynamically populated ip matching.\
 The OpenWrt fw4 ipset syntax is outlined in the [OpenWrt Wiki](https://openwrt.org/docs/guide-user/firewall/firewall_configuration#options_fw4), dscpclassify default rules can be viewed [here](https://github.com/jeverley/dscpclassify/blob/main/etc/config/dscpclassify).
 
 The key difference is that ipsets can be referenced using dest_ip/src_ip, with their name prefixed with '@'.
+
+|Name | Type | Required | Default | Description|
+|--- | --- | --- | --- | ---|
+|enabled | boolean | no | 1 | Allows to disable the declaration of the ipset without the need to delete the section. | 
+|name | string | **yes** | | Name of the IP set. |
+|comment | string | no | | A user defined comment associated with the set. |
+|family | string | no | | Specifies the address family (`ipv4`, `ipv6`) for the IP set, if absent the service tries to identify this from the address entries<sup>1</sup>. |
+|maxelem | uint | no | | Limits the number of entries that can be added to the set. |
+|timeout | uint | no | | Specifies the default timeout for entries added to the set. A value of 0 enables the timeout capability flag on the set, but does not put a timeout on entries. |
+|entry | list | no | | IP address or CIDR notation. |
+|loadfile | string | no | | A path URL on the openwrt filesystem to a file containing a list of CIDRs. |
+
+_1. Vervsions ≥ 2.0 will attempt to autodetect an ipset's family if the option is not specified._
 
 #### Example ipset and rule 📃
 
@@ -168,7 +195,6 @@ config rule
 	list dest_ip '@ms_teams6'
 	option class 'ef'
 ```
-_**Vervsions ≥ 2.0 will attempt to autodetect an ipset's family if the option is not specified.**_
 
 # SQM configuration 🚀
 
