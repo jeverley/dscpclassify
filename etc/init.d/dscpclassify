@@ -757,7 +757,7 @@ rule_addr() {
 		rule_list=${rule_list:+${rule_list}$'\n'}"ip $xaddr $ipset${negate:+ $negate}"
 	done
 	for ipset in $ipset6; do
-		rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip $xaddr $ipset${negate6:+ $negate6}"
+		rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip6 $xaddr $ipset${negate6:+ $negate6}"
 	done
 	[ -n "$ipv4" ] && rule_list=${rule_list:+${rule_list}$'\n'}"ip $xaddr $(nft_element_list "$ipv4")${negate:+ $negate}"
 	[ -n "$ipv6" ] && rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip6 $xaddr $(nft_element_list "$ipv6")${negate6:+ $negate6}"
@@ -837,7 +837,7 @@ create_user_rule() {
 	[ "$error" = 0 ] || return 1
 
 	# Create rule and return if no saddr or daddr is specified
-	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
+	[ -z "$saddr_list$saddr6_list$daddr_list$daddr6_list" ] && {
 		post_include "insert rule inet $TABLE $CHAIN_RULE_CLASSIFY $nfproto $l4proto $iifname $sport $oifname $dport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 		return 0
 	}
