@@ -561,7 +561,7 @@ parse_set_entries() {
 		elif [ -n "$family" ]; then
 			log warning "ipset ${name:+'$name' }with family ${family} can not contain entry: ${entry}"
 		else
-			log warning "ipset ${name:+'$name' }can not mix entry families"
+			log warning "ipset ${name:+'$name' }contains multiple entry families ($_family, $entry_family)"
 			_family=""
 			break
 		fi
@@ -610,10 +610,7 @@ create_user_set() {
 		error=1
 	fi
 	parse_set_loadfile || error=1
-	parse_set_entries "$entries $loadfile_entries" || {
-		log warning "Could not determine the family of ipset ${name:+$name }"
-		error=1
-	}
+	parse_set_entries "$entries $loadfile_entries" || error=1
 	parse_set_type || error=1
 	parse_set_timeout || error=1
 	parse_set_flags || error=1
