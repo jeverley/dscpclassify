@@ -589,19 +589,19 @@ create_user_set() {
 	config_get_bool enabled "$section" enabled 1
 	[ "$enabled" = 1 ] || return 0
 
-	config_get comment "$section" comment
-	config_get name "$section" name
-	config_get family "$section" family
-	config_get match "$section" match
-	config_get type "$section" type # allows user to explicity specify the nft set type
-	config_get size "$section" maxelem
-	config_get timeout "$section" timeout
+	config_get comment "$section" comment		# User defined comment
+	config_get name "$section" name				# Set name
+	config_get family "$section" family			# Either ipv4/ipv6
+	config_get match "$section" match			# Currently unused
+	config_get size "$section" maxelem			# Maximum number of elements
+	config_get timeout "$section" timeout		# Timeout for elements
+	config_get loadfile "$section" loadfile		# Load file for ipset entries
+	config_get entries "$section" entry			# Set entries
 
-	config_get_bool flag_constant "$section" constant
-	config_get_bool flag_interval "$section" interval
-	
-	config_get loadfile "$section" loadfile
-	config_get entries "$section" entry
+	# Not exposed for regular fw4 ipsets
+	config_get_bool flag_constant "$section" constant	# The set contents cannot be updated
+	config_get_bool flag_interval "$section" interval 1	# Supports CIDR intervals
+	config_get type "$section" type						# Explicit nft set type
 
 	check_set_name "$name" || error=1
 	check_set_size "$size" || error=1
