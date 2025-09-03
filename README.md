@@ -150,7 +150,6 @@ The OpenWrt fw4 ipset syntax is outlined in the [OpenWrt Wiki](https://openwrt.o
 ```
 config ipset
 	option name 'ms_teams'
-	option interval '1'
 	list entry '13.107.64.0/18'
 	list entry '52.112.0.0/14'
 	list entry '52.122.0.0/15'
@@ -158,7 +157,6 @@ config ipset
 config ipset
 	option name 'ms_teams6'
 	option family 'ipv6'
-	option interval '1'
 	list entry '2603:1063::/39'
 
 config rule
