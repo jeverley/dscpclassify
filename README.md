@@ -137,13 +137,13 @@ config rule
 ```
 The counter option can be enabled to count the number of matched connections for a rule.
 
-**Vervsions ≥ 2.0 allow a mix of ipsets, ipv4 and ipv6 addresses.**
+_**Vervsions ≥ 2.0 allow a mix of ipsets, ipv4 and ipv6 addresses.**_
 
 ### Section "ipset"
-The ipset sections in `/etc/config/dscpclassify` use the same syntax as OpenWrt's firewall, they can be used in conjunction with rules for dynamically populated ip matching.\
+The ipset sections in `/etc/config/dscpclassify` use a similar syntax to OpenWrt's firewall, they can be used in conjunction with rules for dynamically populated ip matching.\
 The OpenWrt fw4 ipset syntax is outlined in the [OpenWrt Wiki](https://openwrt.org/docs/guide-user/firewall/firewall_configuration#options_fw4), dscpclassify default rules can be viewed [here](https://github.com/jeverley/dscpclassify/blob/main/etc/config/dscpclassify).
 
-**Vervsions ≥ 2.0 will attempt to autodetect an ipset's family if the option is not specified.**
+The key difference is that ipsets can be referenced using dest_ip/src_ip, with their name prefixed with '@'.
 
 #### Example ipset and rule 📃
 
@@ -168,7 +168,7 @@ config rule
 	list dest_ip '@ms_teams6'
 	option class 'ef'
 ```
-
+_**Vervsions ≥ 2.0 will attempt to autodetect an ipset's family if the option is not specified.**_
 
 # SQM configuration 🚀
 
