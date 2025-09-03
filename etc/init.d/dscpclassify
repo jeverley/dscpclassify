@@ -1,6 +1,7 @@
 #!/bin/sh /etc/rc.common
 # shellcheck disable=SC3043,SC3003,SC2019,SC2018,SC3020,SC3057,SC3060
 
+# shellcheck disable=SC2034
 START=50
 USE_PROCD=1
 DEBUG=1
@@ -9,6 +10,17 @@ DEBUG=1
 SERVICE_NAME="dscpclassify"
 TABLE="$SERVICE_NAME"
 CONFIG="$SERVICE_NAME"
+
+# Chain names
+CHAIN_CLIENT_CLASSIFY="client_classify"
+CHAIN_DYNAMIC_CLASSIFY="dynamic_classify"
+CHAIN_DYNAMIC_CLASSIFY_REPLY="dynamic_classify_reply"
+CHAIN_ESTABLISHED_CONNECTION="established_connection"
+CHAIN_RULE_CLASSIFY="rule_classify"
+CHAIN_BULK_CLIENT="bulk_client"
+CHAIN_BULK_CLIENT_REPLY="bulk_client_reply"
+CHAIN_HIGH_THROUGHPUT_SERVICE="high_throughput_service"
+CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY="high_throughput_service_reply"
 
 # Dynamic content
 DEBUG_FILE="/tmp/${SERVICE_NAME}.debug"
@@ -42,6 +54,7 @@ create_debug_file() {
 		echo $'\n'"<--- nft list table inet {$TABLE} --->"
 		nft list table inet "$TABLE" 2>&1
 	} > "$DEBUG_FILE"
+	log info "Debug information saved in $DEBUG_FILE"
 }
 
 delete_debug_file() {
@@ -314,11 +327,11 @@ check_set_name() {
 		return 1
 		;;
 	bulk_clients | bulk_clients6 | high_throughput_services | high_throughput_services6)
-		log warning "Sets cannot overwrite built-in $TABLE sets"
+		log warning "Sets cannot overwrite built-in $SERVICE_NAME sets"
 		return 1
 		;;
 	bulk_client_detect | bulk_client_detect6 | bulk_client_orig_classify | bulk_client_orig_classify6 | bulk_client_reply_classify | bulk_client_reply_classify6 | high_throughput_service_detect | high_throughput_service_detect6)
-		log warning "Sets cannot overwrite built-in $TABLE meter sets"
+		log warning "Sets cannot overwrite built-in $SERVICE_NAME meter sets"
 		return 1
 		;;
 	esac
@@ -378,9 +391,23 @@ parse_rule_ports() {
 }
 
 parse_rule_ips() {
-	for i in $1; do
+	local addresses="$1"
+
+	match_ipset() {
+		local name="$1"
+		for set in $2; do
+			case $name in
+			"@$set") return 0;;
+			"!@$set") return 1;;
+			esac
+		done
+		return 2
+	}
+
+	# shellcheck disable=SC2086
+	for i in $(printf '%s\n' $addresses | sort -u); do
 		# ipv4 address
-		echo "$i" | grep -q -E -e "^!?(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))(/([0-9]|[12][0-9]|3[0-2]))?$" && {
+		check_addr4 "$i" && {
 			case "$i" in
 			"!"*) ipv4_negate="$ipv4_negate ${i#*!}" ;;
 			*) ipv4="$ipv4 $i" ;;
@@ -389,7 +416,7 @@ parse_rule_ips() {
 		}
 
 		# ipv6 address
-		echo "$i" | grep -q -E -e "^!?(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)(/[0-9]{1,3})?$" && {
+		check_addr6 "$i" && {
 			case "$i" in
 			"!"*) ipv6_negate="$ipv6_negate ${i#*!}" ;;
 			*) ipv6="$ipv6 $i" ;;
@@ -397,16 +424,21 @@ parse_rule_ips() {
 			continue
 		}
 
-		# set name
-		echo "$i" | grep -q -E -e "^!?@\w+$" && {
-			case "$i" in
-			"!"*) ipset_negate="$ipset_negate ${i#*!}" ;;
-			*) ipset="$ipset $i" ;;
-			esac
-			continue
-		}
+		# ipv4 ipset
+		match_ipset "$i" "$sets_ipv4"
+		case $? in
+		  0) ipset="${ipset:+$ipset }$i"; continue ;;
+		  1) ipset_negate="${ipset_negate:+$ipset_negate }${i#*!}"; continue ;;
+		esac
 
-		log warning "Invalid ip/set name: $i"
+		#ipv6 ipset
+		match_ipset "$i" "$sets_ipv6"
+		case $? in
+		  0) ipset6="${ipset6:+$ipset6 }$i"; continue ;;
+		  1) ipset6_negate="${ipset_negate6:+$ipset_negate6 }${i#*!}"; continue ;;
+		esac
+
+		log warning "Invalid ip/ipset: $i"
 		return 1
 	done
 }
@@ -497,23 +529,61 @@ parse_set_loadfile() {
 		return 1
 	}
 
-	while IFS= read -r addr || [ -n "$addr" ]; do
-		addr=$(echo "$addr" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-		[ -n "$addr" ] || continue
+	while IFS= read -r entry || [ -n "$entry" ]; do
+		entry=$(echo "$entry" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		[ -n "$entry" ] || continue
 
-		check_addr "$addr" "$family" || {
-			log warning "The ${family:+$family }loadfile address ${addr} is invalid"
+		check_addr "$entry" "$family" || {
+			log warning "The ${family:+$family }loadfile address ${entry} is invalid"
 			continue
 		}
-		loadfile_addr="${loadfile_addr:+$loadfile_addr }$addr"
+		loadfile_entries="${loadfile_entries:+$loadfile_entries }$entry"
 	done < "$loadfile"
 	return 0
 }
 
+# shellcheck disable=SC2016
+parse_set_entries() {
+	local entries="$1" _family="$family" _validated_entries
+	for entry in $entries; do
+		local entry_family
+		if check_addr4 "$entry"; then
+			entry_family="ipv4"
+		elif check_addr6 "$entry"; then
+			entry_family="ipv6"
+		else
+			log warning "ipset ${name:+'$name' }contains an invalid entry: $entry"
+			continue
+		fi
+
+		if [ -z "$_family" ] || [ "$_family" = "$entry_family" ]; then
+			_family="$entry_family"
+			_validated_entries="${_validated_entries:+$_validated_entries }$entry"
+		elif [ -n "$family" ]; then
+			log warning "ipset ${name:+'$name' }with family ${family} can not contain entry: ${entry}"
+		else
+			log warning "ipset ${name:+'$name' }contains multiple entry families ($_family, $entry_family)"
+			_family=""
+			break
+		fi
+	done
+	[ -n "$_family" ] || {
+		log warning "Could not determine the family of ipset '${name}'"
+		return 1
+	}
+	if [ -z "$_validated_entries" ] && [ "$(echo "$entries" | wc -w)" != 0 ]; then
+		log info "ipset ${name:+'$name' }contains no valid entries"
+		return 0
+	fi
+	family="$_family"
+	validated_entries="$_validated_entries"
+}
+
 create_user_set() {
 	local section="$1"
-	local comment entry element enabled family flags match size name timeout type loadfile loadfile_addr
+	local comment enabled family flags match size name timeout type loadfile
 	local flag_constant flag_interval flag_timeout auto_merge
+	local entries loadfile_entries validated_entries
 	local error=0
 
 	config_get_bool enabled "$section" enabled 1
@@ -521,7 +591,7 @@ create_user_set() {
 
 	config_get comment "$section" comment
 	config_get name "$section" name
-	config_get family "$section" family ipv4
+	config_get family "$section" family
 	config_get match "$section" match
 	config_get type "$section" type # allows user to explicity specify the nft set type
 	config_get size "$section" maxelem
@@ -531,16 +601,17 @@ create_user_set() {
 	config_get_bool flag_interval "$section" interval
 	
 	config_get loadfile "$section" loadfile
-	config_get entry "$section" entry
+	config_get entries "$section" entry
 
 	check_set_name "$name" || error=1
 	check_set_size "$size" || error=1
-	check_family "$family" || {
-		log warning "Set contains an invalid family"
-		error=1
-	}
 
+	if [ -n "$family" ] && ! check_family "$family"; then
+		log warning "ipset ${name:+$name }contains an invalid family"
+		error=1
+	fi
 	parse_set_loadfile || error=1
+	parse_set_entries "$entries $loadfile_entries" || error=1
 	parse_set_type || error=1
 	parse_set_timeout || error=1
 	parse_set_flags || error=1
@@ -551,7 +622,13 @@ create_user_set() {
 		post_include "add set inet $TABLE $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
 	}
 
-	[ -n "$entry$loadfile_addr" ] && post_include "add element inet $TABLE $name $(nft_element_list "$entry $loadfile_addr")"
+	[ -n "$validated_entries" ] && post_include "add element inet $TABLE $name $(nft_element_list "$validated_entries")"
+
+	# Store set type for use in user rules
+	case $family in
+	"ipv4") sets_ipv4="${sets_ipv4:+$sets_ipv4 }$name" ;;
+	"ipv6") sets_ipv6="${sets_ipv6:+$sets_ipv6 }$name" ;;
+	esac
 
 	return 0
 }
@@ -629,11 +706,12 @@ rule_port() {
 	return 0
 }
 
+# shellcheck disable=SC2016
 rule_addr() {
-	local direction="$1" addresses="$2" family="$3" 
-	local rule rule6 xaddr
-	local ipv4 ipv6 ipset
-	local ipv4_negate ipv6_negate ipset_negate
+	local direction="$1" addresses="$2" family="$3" xaddr
+	local ipv4 ipv4_negate ipset ipset_negate
+	local ipv6 ipv6_negate ipset6 ipset6_negate
+	local rule_list rule6_list negate negate6 
 
 	case "$direction" in
 	src) xaddr="saddr" ;;
@@ -647,54 +725,46 @@ rule_addr() {
 	[ -n "$addresses" ] || return 0
 
 	if [ -n "$family" ] && ! check_family "$family"; then
-		log warning "Rule contains an invalid family"
+		log warning "Rule ${name:+'$name' }contains an invalid family"
 		return 1
 	fi
-
 	parse_rule_ips "$addresses" || {
-		log warning "Rule contains an invalid ${direction}_ip"
+		log warning "Rule ${name:+'$name' }contains an invalid ${direction}_ip"
 		return 1
 	}
-	if [ -n "$ipset$ipset_negate" ] && [ -n "$ipv4$ipv6$ipv4_negate$ipv6_negate" ]; then
-		log warning "Rules must not mix IP addresses and sets in the ${direction}_ip option"
+	if [ -n "$ipv4$ipv4_negate$ipset$ipset_negate" ] && [ "$family" = "ipv6" ]; then
+		log warning "Rules cannot combine an ipv4 ${direction}_ip with the 'ipv6' family option${name:+, rule: '$name'}"
 		return 1
 	fi
-	if [ -n "$ipv4$ipv4_negate" ] && [ "$family" = "ipv6" ]; then
-		log warning "Rules cannot combine an ipv4 ${direction}_ip with the 'ipv6' family option"
-		return 1
-	fi
-	if [ -n "$ipv6$ipv6_negate" ] && [ "$family" = "ipv4" ]; then
-		log warning "Rules cannot combine an ipv6 ${direction}_ip with the 'ipv4' family option"
-		return 1
-	fi
-	if [ "$(echo "$ipset" | wc -w)" -gt 1 ] || [ "$(echo "$ipset_negate" | wc -w)" -gt 1 ]; then
-		log warning "Rules must not contain more than one set for the ${direction}_ip option"
+	if [ -n "$ipv6$ipv6_negate$ipset6$ipset6_negate" ] && [ "$family" = "ipv4" ]; then
+		log warning "Rules cannot combine an ipv6 ${direction}_ip with the 'ipv4' family option${name:+, rule: '$name'}"
 		return 1
 	fi
 
-	[ -n "$ipv4" ] && rule="ip $xaddr $(nft_element_list "$ipv4")"
-	[ -n "$ipv4_negate" ] && rule="$rule ip $xaddr != $(nft_element_list "$ipv4_negate")"
+	# Address negate
+	[ -n "$ipv4_negate" ] && negate="ip $xaddr != $(nft_element_list "$ipv4_negate")"
+	[ -n "$ipv6_negate" ] && negate6="ip6 $xaddr != $(nft_element_list "$ipv6_negate")"
 
-	[ -n "$ipv6" ] && rule6="ip6 $xaddr $(nft_element_list "$ipv6")"
-	[ -n "$ipv6_negate" ] && rule6="$rule6 ip6 $xaddr != $(nft_element_list "$ipv6_negate")"
+	# Set negate
+	for ipset in $ipset_negate; do
+		negate="${negate:+$negate }ip $xaddr != $ipset"
+	done
+	for ipset in $ipset6_negate; do
+		negate6="${negate6:+$negate6 }ip6 $xaddr != $ipset"
+	done
 
-	[ -n "$ipset$ipset_negate" ] && case "$family" in
-	ipv4)
-		[ -n "$ipset" ] && rule="$rule ip $xaddr $ipset"
-		[ -n "$ipset_negate" ] && rule="$rule ip $xaddr != $ipset_negate"
-		;;
-	ipv6)
-		[ -n "$ipset" ] && rule6="$rule6 ip6 $xaddr $ipset"
-		[ -n "$ipset_negate" ] && rule6="$rule6 ip6 $xaddr != $ipset_negate"
-		;;
-	*)
-		log warning "Rules must contain the family option when a set is present in the ${direction}_ip option"
-		return 1
-		;;
-	esac
+	# Create an address rule per allowed IP/set
+	for ipset in $ipset; do
+		rule_list=${rule_list:+${rule_list}$'\n'}"ip $xaddr $ipset${negate:+ $negate}"
+	done
+	for ipset in $ipset6; do
+		rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip6 $xaddr $ipset${negate6:+ $negate6}"
+	done
+	[ -n "$ipv4" ] && rule_list=${rule_list:+${rule_list}$'\n'}"ip $xaddr $(nft_element_list "$ipv4")${negate:+ $negate}"
+	[ -n "$ipv6" ] && rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip6 $xaddr $(nft_element_list "$ipv6")${negate6:+ $negate6}"
 
-	eval "$xaddr"='$rule'
-	eval "$xaddr"6='$rule6'
+	eval "$xaddr"_list='$rule_list'
+	eval "$xaddr"6_list='$rule6_list'
 	return 0
 }
 
@@ -734,7 +804,8 @@ rule_verdict() {
 create_user_rule() {
 	local section="$1"
 	local enabled family proto direction device dest dest_ip dest_port src src_ip src_port counter class name
-	local nfproto l4proto oifname daddr daddr6 dport iifname saddr saddr6 sport verdict
+	local nfproto l4proto iifname sport oifname dport verdict
+	local saddr_list saddr6_list daddr_list daddr6_list
 	local error=0
 
 	config_get_bool enabled "$section" enabled 1
@@ -766,28 +837,38 @@ create_user_rule() {
 	rule_verdict "$class" || error=1
 	[ "$error" = 0 ] || return 1
 
-	[ -z "$daddr$saddr$daddr6$saddr6" ] && {
-		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $dport $iifname $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+	# Create rule and return if no saddr or daddr is specified
+	[ -z "$saddr_list$saddr6_list$daddr_list$daddr6_list" ] && {
+		post_include "insert rule inet $TABLE $CHAIN_RULE_CLASSIFY $nfproto $l4proto $iifname $sport $oifname $dport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
 		return 0
 	}
-	[ -n "$daddr$saddr" ] && {
-		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $daddr $dport $iifname $saddr $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+
+	# Create rules for each saddr and daddr combination
+	for_each_saddr_daddr() {
+		local saddr_list="$1" daddr_list="$2"
+		[ -n "$saddr_list$daddr_list" ] || return 0
+		printf '%s\n' "${saddr_list:-}" | while IFS= read -r saddr || [ -n "$saddr" ]; do
+			printf '%s\n' "${daddr_list:-}" | while IFS= read -r daddr || [ -n "$daddr" ]; do
+				[ -n "$saddr$daddr" ] || continue
+				post_include "insert rule inet $TABLE $CHAIN_RULE_CLASSIFY $nfproto $l4proto $iifname $saddr $sport $oifname $daddr $dport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
+			done
+		done
 	}
-	[ -n "$daddr6$saddr6" ] && {
-		post_include "insert rule inet $TABLE rule_classify $nfproto $l4proto $oifname $daddr6 $dport $iifname $saddr6 $sport ${counter:+counter} $verdict ${name:+comment \"$name\"}"
-	}
+	for_each_saddr_daddr "$saddr_list" "$daddr_list"
+	for_each_saddr_daddr "$saddr6_list" "$daddr6_list"
+
 	return 0
 }
 
 destroy_client_class_adoption_rules() {
-	post_include "destroy chain inet $TABLE client_classify"
+	post_include "destroy chain inet $TABLE $CHAIN_CLIENT_CLASSIFY"
 }
 
 create_client_class_adoption_rules() {
 	local enabled=1
 	local exclude_class_defaults="cs6 cs7"
-	local exclude_class src_ip
-	local saddr saddr6
+	local exclude_class src_ip family
+	local saddr_list saddr6_list
 
 	config_get_bool enabled "$client_class_adoption_config" enabled "$enabled"
 	[ "$enabled" = 1 ] || {
@@ -818,18 +899,22 @@ create_client_class_adoption_rules() {
 	}
 
 	# Create client class adoption rules
-	post_include "add rule inet $TABLE client_classify $saddr ip dscp != $exclude_class ip dscp vmap @dscp_ct"
-	post_include "add rule inet $TABLE client_classify $saddr6 ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
+	for saddr in $saddr_list; do
+		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr ip dscp != $exclude_class ip dscp vmap @dscp_ct"
+	done
+	for saddr6 in $saddr6_list; do
+		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr6 ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
+	done
 
 	# Create jump from input and postrouting chains
-	post_include "add rule inet $TABLE input ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump client_classify"
-	post_include "add rule inet $TABLE postrouting ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump client_classify"
+	post_include "add rule inet $TABLE input ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump $CHAIN_CLIENT_CLASSIFY"
+	post_include "add rule inet $TABLE postrouting ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump $CHAIN_CLIENT_CLASSIFY"
 }
 
 destroy_dynamic_classify_rules() {
-	post_include "destroy chain inet $TABLE dynamic_classify"
-	post_include "destroy chain inet $TABLE dynamic_classify_reply"
-	post_include "destroy chain inet $TABLE established_connection"
+	post_include "destroy chain inet $TABLE $CHAIN_DYNAMIC_CLASSIFY"
+	post_include "destroy chain inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY"
+	post_include "destroy chain inet $TABLE $CHAIN_ESTABLISHED_CONNECTION"
 }
 
 create_dynamic_classify_rules() {
@@ -843,13 +928,13 @@ create_dynamic_classify_rules() {
 		return 0
 	fi
 
-	post_include "add rule inet $TABLE input ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump dynamic_classify"
-	post_include "add rule inet $TABLE postrouting ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump dynamic_classify"
+	post_include "add rule inet $TABLE input ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump $CHAIN_DYNAMIC_CLASSIFY"
+	post_include "add rule inet $TABLE postrouting ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump $CHAIN_DYNAMIC_CLASSIFY"
 }
 
 destroy_bulk_client_rules() {
-	post_include "destroy chain inet $TABLE bulk_client"
-	post_include "destroy chain inet $TABLE bulk_client_reply"
+	post_include "destroy chain inet $TABLE $CHAIN_BULK_CLIENT"
+	post_include "destroy chain inet $TABLE $CHAIN_BULK_CLIENT_REPLY"
 
 	post_include "destroy set inet $TABLE bulk_clients"
 	post_include "destroy set inet $TABLE bulk_clients6"
@@ -897,29 +982,29 @@ create_bulk_client_rules() {
 	check_set_exists bulk_clients6 || post_include "add set inet $TABLE bulk_clients6 { type ipv6_addr . inet_service . inet_proto; flags timeout; }"
 
 	# Create threaded client detection rules
-	post_include "add rule inet $TABLE established_connection meter bulk_client_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients { ip daddr . th dport . meta l4proto timeout 30s }"
-	post_include "add rule inet $TABLE established_connection meter bulk_client_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter bulk_client_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients { ip daddr . th dport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter bulk_client_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
 
 	# Create threaded client classification rule chains
-	post_include "add chain inet $TABLE bulk_client"
-	post_include "add rule inet $TABLE bulk_client meter bulk_client_orig_classify { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
-	post_include "add rule inet $TABLE bulk_client meter bulk_client_orig_classify6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add chain inet $TABLE $CHAIN_BULK_CLIENT"
+	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT meter bulk_client_orig_classify { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT meter bulk_client_orig_classify6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
 
-	post_include "add chain inet $TABLE bulk_client_reply"
-	post_include "add rule inet $TABLE bulk_client_reply meter bulk_client_reply_classify { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
-	post_include "add rule inet $TABLE bulk_client_reply meter bulk_client_reply_classify6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add chain inet $TABLE $CHAIN_BULK_CLIENT_REPLY"
+	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT_REPLY meter bulk_client_reply_classify { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT_REPLY meter bulk_client_reply_classify6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
 
-	# Create jumps from dynamic_classify chain
-	post_include "add rule inet $TABLE dynamic_classify ip saddr . th sport . meta l4proto @bulk_clients goto bulk_client"
-	post_include "add rule inet $TABLE dynamic_classify ip6 saddr . th sport . meta l4proto @bulk_clients6 goto bulk_client"
+	# Create jumps from dynamic classify chains
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip saddr . th sport . meta l4proto @bulk_clients goto $CHAIN_BULK_CLIENT"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip6 saddr . th sport . meta l4proto @bulk_clients6 goto $CHAIN_BULK_CLIENT"
 
-	post_include "add rule inet $TABLE dynamic_classify_reply ip daddr . th dport . meta l4proto @bulk_clients goto bulk_client_reply"
-	post_include "add rule inet $TABLE dynamic_classify_reply ip6 daddr . th dport . meta l4proto @bulk_clients6 goto bulk_client_reply"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip daddr . th dport . meta l4proto @bulk_clients goto $CHAIN_BULK_CLIENT_REPLY"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip6 daddr . th dport . meta l4proto @bulk_clients6 goto $CHAIN_BULK_CLIENT_REPLY"
 }
 
 destroy_high_throughput_service_rules() {
-	post_include "destroy chain inet $TABLE high_throughput_service"
-	post_include "destroy chain inet $TABLE high_throughput_service_reply"
+	post_include "destroy chain inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE"
+	post_include "destroy chain inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
 
 	post_include "destroy set inet $TABLE high_throughput_services"
 	post_include "destroy set inet $TABLE high_throughput_services6"
@@ -967,28 +1052,28 @@ create_high_throughput_service_rules() {
 	check_set_exists high_throughput_services6 || post_include "add set inet $TABLE high_throughput_services6 { type ipv6_addr . ipv6_addr . inet_service . inet_proto; flags timeout; }"
 
 	# Create threaded service detection rules
-	post_include "add rule inet $TABLE established_connection meter high_throughput_service_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
-	post_include "add rule inet $TABLE established_connection meter high_throughput_service_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter high_throughput_service_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter high_throughput_service_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
 
 	# Create threaded service classification rule chains
-	post_include "add chain inet $TABLE high_throughput_service"
-	post_include "add rule inet $TABLE high_throughput_service ct original bytes < $min_bytes return"
-	post_include "add rule inet $TABLE high_throughput_service update @high_throughput_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"
-	post_include "add rule inet $TABLE high_throughput_service update @high_throughput_services6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }"
-	post_include "add rule inet $TABLE high_throughput_service ct mark set ct mark | \$${class} return"
+	post_include "add chain inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE ct original bytes < $min_bytes return"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE update @high_throughput_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE update @high_throughput_services6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE ct mark set ct mark | \$${class} return"
 
-	post_include "add chain inet $TABLE high_throughput_service_reply"
-	post_include "add rule inet $TABLE high_throughput_service_reply ct reply bytes < $min_bytes return"
-	post_include "add rule inet $TABLE high_throughput_service_reply update @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }"
-	post_include "add rule inet $TABLE high_throughput_service_reply update @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }"
-	post_include "add rule inet $TABLE high_throughput_service_reply ct mark set ct mark | \$${class} return"
+	post_include "add chain inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY ct reply bytes < $min_bytes return"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY update @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY update @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY ct mark set ct mark | \$${class} return"
 
-	# Create jumps from dynamic_classify chain
-	post_include "add rule inet $TABLE dynamic_classify ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto @high_throughput_services goto high_throughput_service"
-	post_include "add rule inet $TABLE dynamic_classify ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto @high_throughput_services6 goto high_throughput_service"
+	# Create jumps from dynamic classify chains
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto @high_throughput_services goto $CHAIN_HIGH_THROUGHPUT_SERVICE"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto @high_throughput_services6 goto $CHAIN_HIGH_THROUGHPUT_SERVICE"
 
-	post_include "add rule inet $TABLE dynamic_classify_reply ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto @high_throughput_services goto high_throughput_service_reply"
-	post_include "add rule inet $TABLE dynamic_classify_reply ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto @high_throughput_services6 goto high_throughput_service_reply"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto @high_throughput_services goto $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto @high_throughput_services6 goto $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
 }
 
 create_dscp_mark_rule() {
@@ -1034,8 +1119,8 @@ create_pre_include() {
 create_post_include() {
 	rm -f "$POST_INCLUDE"
 
-	config_foreach create_user_set set   # deprecating in favour of 'ipset' section name for consistency with fw4
-	config_foreach create_user_set ipset # section name consistent with fw4
+	local sets_ipv4 sets_ipv6
+	config_foreach create_user_set ipset
 	config_foreach_reverse create_user_rule rule
 
 	create_client_class_adoption_rules || return 1
