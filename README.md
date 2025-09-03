@@ -8,13 +8,13 @@ DSCP Classify can mark LAN destined packets with [WMM mapped](https://datatracke
 
 _Users of layer-cake SQM should install the [layer_cake_ct](#layer_cake_ctqos) SQM script for setting DSCP marks on inbound packets, see [SQM Configuration](#sqm-configuration-)❗_
 
-## User rules 📝
+## User Rules 📝
 You can create rules to classify new connections in the service [config file](#configuration-%EF%B8%8F).\
 These use a similar syntax to the OpenWrt firewall config and can match source and destination ports, addresses, ipsets, firewall zones etc.
 
 More information and examples can be found in the [rules section](#section-rule).
 
-## Automatic classification 🪄
+## Automatic Classification 🪄
 Connections that don't match a rule will be automatically classified by the service using one of the below methods.
 
 ### Client class adoption ✨
@@ -29,13 +29,13 @@ Services such as Steam make use of parralel connections to maximise download ban
   * **diffserv8**: prioritised **below Best Effort (BE/DF/CS0)** traffic and **above Low Effort (LE)** traffic
   * **diffserv3/4**: prioritised **equal to Best Effort (BE/DF/CS0)** traffic
 
-## Service architecture 🏗️ 
+## Service Architecture 🏗️ 
 
 The dscpclassify service uses the last 8 bits of the conntrack mark (0x000000**ff**), leaving the remaining bits for use by other applications.
 
 <img src="https://user-images.githubusercontent.com/46714706/188151111-9167e54d-482e-4584-b43b-0759e0ad7561.png" width="80%">
 
-# Service installation ⚙️
+# Service Installation ⚙️
 To install dscpclassify service via command line you can use the following sets of commands.
 
 ### dscpclassify 
@@ -122,43 +122,53 @@ The rules support matching source/destination addresses in nft **sets**, these c
 
 ```
 config rule
-	option name 'DNS'
-	list proto 'tcp'
-	list proto 'udp'
-	list dest_port '53'
-	list dest_port '853'
-	list dest_port '5353'
-	option class 'cs5'
-	option counter '0'
+	option name	'DNS'
+	list proto	'tcp'
+	list proto	'udp'
+	list dest_port	'53'
+	list dest_port	'853'
+	list dest_port	'5353'
+	list dest_ip	'8.8.8.8'
+	list dest_ip	'2001:4860:4860::8888'
+	list dest_ip	'@DoH'
+	list dest_ip	'@DoH6'
+	option class	'cs5'
+	option counter	'0'
 ```
 The counter option can be enabled to count the number of matched connections for a rule.
+
+**Vervsions ≥ 2.0 allow a mix of ipsets, ipv4 and ipv6 addresses.**
 
 ### Section "ipset"
 The ipset sections in `/etc/config/dscpclassify` use the same syntax as OpenWrt's firewall, they can be used in conjunction with rules for dynamically populated ip matching.\
 The OpenWrt fw4 ipset syntax is outlined in the [OpenWrt Wiki](https://openwrt.org/docs/guide-user/firewall/firewall_configuration#options_fw4), dscpclassify default rules can be viewed [here](https://github.com/jeverley/dscpclassify/blob/main/etc/config/dscpclassify).
 
+**Vervsions ≥ 2.0 will attempt to autodetect an ipset's family if the option is not specified.**
+
 #### Example ipset and rule 📃
 
 ```
 config ipset
-	option name 'xcloud'
+	option name 'ms_teams'
 	option interval '1'
-	list entry '13.104.0.0/14' # Western Europe
+	list entry '13.107.64.0/18'
+	list entry '52.112.0.0/14'
+	list entry '52.122.0.0/15'
 
 config ipset
-	option name 'dns_4'
+	option name 'ms_teams6'
+	option family 'ipv6'
 	option interval '1'
-	option family 'ipv4'
-	option loadfile '/var/ipset-dns_hosts_4'
+	list entry '2603:1063::/39'
 
 config rule
-	option name 'Xbox Cloud Gaming'
+	option name 'Microsoft Teams Voice'
 	option proto 'udp'
-	option family 'ipv4'
-	list dest_ip '@xcloud'
-	list dest_port '1000-1150'
-	list dest_port '9002'
-	option class 'af41'
+	option src_port '50000-50019'
+	option dest_port '3478-3481'
+	list dest_ip '@ms_teams'
+	list dest_ip '@ms_teams6'
+	option class 'ef'
 ```
 
 
