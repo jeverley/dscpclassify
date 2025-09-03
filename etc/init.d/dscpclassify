@@ -54,6 +54,7 @@ create_debug_file() {
 		echo $'\n'"<--- nft list table inet {$TABLE} --->"
 		nft list table inet "$TABLE" 2>&1
 	} > "$DEBUG_FILE"
+	log info "Debug information saved in $DEBUG_FILE"
 }
 
 delete_debug_file() {
