@@ -543,7 +543,7 @@ parse_set_loadfile() {
 
 # shellcheck disable=SC2016
 parse_set_entries() {
-	local entries="$1" _family="$family"
+	local entries="$1" _family="$family" _validated_entries
 	for entry in $entries; do
 		local entry_family
 		if check_addr4 "$entry"; then
@@ -557,22 +557,25 @@ parse_set_entries() {
 
 		if [ -z "$_family" ] || [ "$_family" = "$entry_family" ]; then
 			_family="$entry_family"
-			validated_entries="${validated_entries:+$validated_entries }$entry"
+			_validated_entries="${_validated_entries:+$_validated_entries }$entry"
 		elif [ -n "$family" ]; then
 			log warning "ipset ${name:+'$name' }with family ${family} can not contain entry: ${entry}"
 		else
 			log warning "ipset ${name:+'$name' }can not mix entry families"
+			_family=""
+			break
 		fi
 	done
 	[ -n "$_family" ] || {
 		log warning "Could not determine the family of ipset '${name}'"
 		return 1
-	}	
-	if [ "$(echo "$entries" | wc -w)" != 0 ] && [ -z "$validated_entries" ]; then
+	}
+	if [ -z "$_validated_entries" ] && [ "$(echo "$entries" | wc -w)" != 0 ]; then
 		log info "ipset ${name:+'$name' }contains no valid entries"
 		return 0
 	fi
 	family="$_family"
+	validated_entries="$_validated_entries"
 }
 
 create_user_set() {
