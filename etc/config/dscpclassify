@@ -1,26 +1,44 @@
-config global 'global'
-	option class_bulk 'le'
-	option class_high_throughput 'af13'
-	option client_hints '1'
-	option threaded_client_min_bytes '10000'
-	option threaded_service_min_bytes '1000000'
-	option wmm '0'
+config service
+	option wmm_mark_lan '0'
+
+config client_class_adoption
+	option enabled '1'
+	list exclude_class 'cs6'
+	list exclude_class 'cs7'
+
+config bulk_client_detection
+	option enabled '1'
+	option min_bytes '10000'
+	option min_connections '10'
+
+config high_throughput_service_detection
+	option enabled '1'
+	option min_bytes '1000000'
+	option min_connections '3'
+
+config ipset
+	option name 'ms_teams'
+	list entry '13.107.64.0/18'
+	list entry '52.112.0.0/14'
+	list entry '52.122.0.0/15'
+
+config ipset
+	option name 'ms_teams6'
+	option family 'ipv6'
+	list entry '2603:1063::/39'
 
 config ipset
 	option name 'xcloud'
-	option interval '1'
 	list entry '13.104.0.0/14' # Western Europe
 
 config ipset
 	option name 'xcloud6'
 	option family 'ipv6'
-	option interval '1'
 	list entry '2603:1000::/24' # Western Europe
 
 config ipset
 	option name 'zoom_meet'
 	option family 'ipv4'
-	option interval '1'
 	list entry '3.7.35.0/25'
 	list entry '3.235.82.0/23'
 	list entry '3.235.96.0/23'
@@ -92,15 +110,12 @@ config ipset
 config ipset
 	option name 'zoom_meet6'
 	option family 'ipv6'
-	option interval '1'
 	list entry '2407:30C0::/32'
 	list entry '2600:9000:2600::/48'
 	list entry '2620:123:2000::/40'
 
 config ipset
 	option name 'zoom_phone'
-	option family 'ipv4'
-	option interval '1'
 	list entry '8.5.128.0/24'
 	list entry '64.211.144.0/24'
 	list entry '64.224.32.0/19'
@@ -130,77 +145,41 @@ config ipset
 
 config ipset
 	option name 'zoom_phone6'
-	option interval '1'
 	option family 'ipv6'
 	list entry '2620:123:2000::/40'
 
 config rule
 	option name 'Zoom Meetings and Webinars TCP'
-	option family 'ipv4'
 	list proto 'tcp'
 	list dest_port '443'
 	list dest_port '8801-8802'
 	list dest_ip '@zoom_meet'
-	option class 'af41'
-
-config rule
-	option name 'Zoom Meetings and Webinars TCP IPv6'
-	option family 'ipv6'
-	list proto 'tcp'
-	list dest_port '443'
-	list dest_port '8801-8802'
 	list dest_ip '@zoom_meet6'
 	option class 'af41'
 
 config rule
 	option name 'Zoom Meetings and Webinars UDP'
-	option family 'ipv4'
 	list proto 'udp'
 	list dest_port '3478-3479'
 	list dest_port '8801-8810'
 	list dest_ip '@zoom_meet'
-	option class 'af41'
-
-config rule
-	option name 'Zoom Meetings and Webinars UDP IPv6'
-	option family 'ipv6'
-	list proto 'udp'
-	list dest_port '3478-3479'
-	list dest_port '8801-8810'
 	list dest_ip '@zoom_meet6'
 	option class 'af41'
 
 config rule
 	option name 'Zoom Phone TCP'
-	option family 'ipv4'
 	list proto 'tcp'
 	list dest_port '443'
 	list dest_port '5091'
 	list dest_ip '@zoom_phone'
-	option class 'af41'
-
-config rule
-	option name 'Zoom Phone TCP IPv6'
-	option family 'ipv6'
-	list proto 'tcp'
-	list dest_port '443'
-	list dest_port '5091'
 	list dest_ip '@zoom_phone6'
 	option class 'af41'
 
 config rule
 	option name 'Zoom Phone UDP'
-	option family 'ipv4'
 	list proto 'udp'
 	list dest_port '20000-64000'
 	list dest_ip '@zoom_phone'
-	option class 'ef'
-
-config rule
-	option name 'Zoom Phone UDP IPv6'
-	option family 'ipv6'
-	list proto 'udp'
-	list dest_port '20000-64000'
 	list dest_ip '@zoom_phone6'
 	option class 'ef'
 
@@ -213,31 +192,38 @@ config rule
 	list dest_port '5353'
 	option class 'cs5'
 
+config ipset
+	option name 'DoH'
+	list entry '8.8.8.8'			# Google
+	list entry '8.8.4.4'			# Google
+	list entry '1.1.1.1'			# Cloudflare
+	list entry '1.0.0.1'			# Cloudflare
+	list entry '9.9.9.9'			# Quad9 Secured
+	list entry '149.112.112.112'	# Quad9 Secured
+	list entry '9.9.9.11'			# Quad9 Secured w/ECS
+	list entry '149.112.112.11'		# Quad9 Secured w/ECS
+
+config ipset
+	option name 'DoH6'
+	list entry '2001:4860:4860::8888'	# Google
+	list entry '2001:4860:4860::8844'	# Google
+	list entry '2606:4700:4700::1111' 	# Cloudflare
+	list entry '2606:4700:4700::1001'	# Cloudflare
+	list entry '2620:fe::fe'			# Quad9 Secured
+	list entry '2620:fe::9'				# Quad9 Secured
+	list entry '2620:fe::11'			# Quad9 Secured w/ECS
+	list entry '2620:fe::fe:11'			# Quad9 Secured w/ECS
+	list entry '2a10:50c0::ad1:ff'		# AdGuard
+	list entry '2a10:50c0::ad2:ff'		# AdGuard
+	list entry '2a10:50c0::ded:ff'		# AdGuard Dedicated
+
 config rule
 	option name 'DoH'
 	list proto 'tcp'
 	list proto 'udp'
-	list dest_ip '8.8.8.8'				# Google
-	list dest_ip '8.8.4.4'				# Google
-	list dest_ip '1.1.1.1'				# Cloudflare
-	list dest_ip '1.0.0.1'				# Cloudflare
-	list dest_ip '9.9.9.9'				# Quad9 Secured
-	list dest_ip '149.112.112.112'		# Quad9 Secured
-	list dest_ip '9.9.9.11'				# Quad9 Secured w/ECS
-	list dest_ip '149.112.112.11'		# Quad9 Secured w/ECS
-	list dest_ip '94.140.14.0/24'		# AdGuard
-	list dest_ip '2001:4860:4860::8888' # Google
-	list dest_ip '2001:4860:4860::8844' # Google
-	list dest_ip '2606:4700:4700::1111' # Cloudflare
-	list dest_ip '2606:4700:4700::1001' # Cloudflare
-	list dest_ip '2620:fe::fe'			# Quad9 Secured
-	list dest_ip '2620:fe::9'			# Quad9 Secured
-	list dest_ip '2620:fe::11'			# Quad9 Secured w/ECS
-	list dest_ip '2620:fe::fe:11'		# Quad9 Secured w/ECS
-	list dest_ip '2a10:50c0::ad1:ff'	# AdGuard
-	list dest_ip '2a10:50c0::ad2:ff'	# AdGuard
-	list dest_ip '2a10:50c0::ded:ff'	# AdGuard Dedicated
 	list dest_port '443'
+	list dest_ip '@DoH'
+	list dest_ip '@DoH6'
 	option class 'cs5'
 
 config rule
@@ -262,52 +248,37 @@ config rule
 config rule
 	option name 'Xbox Cloud Gaming'
 	option proto 'udp'
-	option family 'ipv4'
 	list dest_ip '@xcloud'
-	list dest_port '1000-1150'
-	list dest_port '9002'
-	option class 'af41'
-
-config rule
-	option name 'Xbox Cloud Gaming IPv6'
-	option proto 'udp'
-	option family 'ipv6'
 	list dest_ip '@xcloud6'
 	list dest_port '1000-1150'
 	list dest_port '9002'
 	option class 'af41'
 
 config rule
-	option name 'Microsoft Teams voice'
+	option name 'Microsoft Teams Voice'
 	option proto 'udp'
 	option src_port '50000-50019'
 	option dest_port '3478-3481'
-	list dest_ip '13.107.64.0/18'
-	list dest_ip '52.112.0.0/14'
-	list dest_ip '52.122.0.0/15'
-	list dest_ip '2603:1063::/39'
+	list dest_ip '@ms_teams'
+	list dest_ip '@ms_teams6'
 	option class 'ef'
 
 config rule
-	option name 'Microsoft Teams video'
+	option name 'Microsoft Teams Video'
 	option proto 'udp'
 	option src_port '50020-50039'
 	option dest_port '3478-3481'
-	list dest_ip '13.107.64.0/18'
-	list dest_ip '52.112.0.0/14'
-	list dest_ip '52.122.0.0/15'
-	list dest_ip '2603:1063::/39'
+	list dest_ip '@ms_teams'
+	list dest_ip '@ms_teams6'
 	option class 'af41'
 
 config rule
-	option name 'Microsoft Teams sharing'
+	option name 'Microsoft Teams Sharing'
 	option proto 'udp'
 	option src_port '50040-50059'
 	option dest_port '3478-3481'
-	list dest_ip '13.107.64.0/18'
-	list dest_ip '52.112.0.0/14'
-	list dest_ip '52.122.0.0/15'
-	list dest_ip '2603:1063::/39'
+	list dest_ip '@ms_teams'
+	list dest_ip '@ms_teams6'
 	option class 'af21'
 
 config rule
