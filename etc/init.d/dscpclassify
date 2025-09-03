@@ -1,6 +1,7 @@
 #!/bin/sh /etc/rc.common
 # shellcheck disable=SC3043,SC3003,SC2019,SC2018,SC3020,SC3057,SC3060
 
+# shellcheck disable=SC2034
 START=50
 USE_PROCD=1
 DEBUG=1
@@ -436,7 +437,7 @@ parse_rule_ips() {
 		  1) ipset6_negate="${ipset_negate6:+$ipset_negate6 }${i#*!}"; continue ;;
 		esac
 
-		log warning "Invalid ip/ipset name: $i"
+		log warning "Invalid ip/ipset: $i"
 		return 1
 	done
 }
@@ -540,33 +541,45 @@ parse_set_loadfile() {
 	return 0
 }
 
-determine_set_family() {
-	local addresses="$1" _family="$family"
-	for addr in $addresses; do
-		local addr_family
-		if check_addr4 "$addr"; then
-			addr_family="ipv4"
-		elif check_addr6 "$addr"; then
-			addr_family="ipv6"
+# shellcheck disable=SC2016
+parse_set_entries() {
+	local entries="$1" _family="$family"
+	for entry in $entries; do
+		local entry_family
+		if check_addr4 "$entry"; then
+			entry_family="ipv4"
+		elif check_addr6 "$entry"; then
+			entry_family="ipv6"
 		else
-			log warning "ipset ${name:+$name }contains an invalid address: $addr"
+			log warning "ipset ${name:+'$name' }contains an invalid entry: $entry"
 			continue
 		fi
-		if [ -z "$_family" ]; then
-			_family="$addr_family"
-		elif [ "$_family" != "$addr_family" ]; then
-			log warning "ipset ${name:+$name }contains both ipv4 and IPv6 addresses"
-			return 1
+
+		if [ -z "$_family" ] || [ "$_family" = "$entry_family" ]; then
+			_family="$entry_family"
+			validated_entries="${validated_entries:+$validated_entries }$entry"
+		elif [ -n "$family" ]; then
+			log warning "ipset ${name:+'$name' }with family ${family} can not contain entry: ${entry}"
+		else
+			log warning "ipset ${name:+'$name' }can not mix entry families"
 		fi
 	done
-	[ -n "$_family" ] || return 1
+	[ -n "$_family" ] || {
+		log warning "Could not determine the family of ipset '${name}'"
+		return 1
+	}	
+	if [ "$(echo "$entries" | wc -w)" != 0 ] && [ -z "$validated_entries" ]; then
+		log info "ipset ${name:+'$name' }contains no valid entries"
+		return 0
+	fi
 	family="$_family"
 }
 
 create_user_set() {
 	local section="$1"
-	local comment entries enabled family flags match size name timeout type loadfile loadfile_entries
+	local comment enabled family flags match size name timeout type loadfile
 	local flag_constant flag_interval flag_timeout auto_merge
+	local entries loadfile_entries validated_entries
 	local error=0
 
 	config_get_bool enabled "$section" enabled 1
@@ -574,7 +587,7 @@ create_user_set() {
 
 	config_get comment "$section" comment
 	config_get name "$section" name
-	config_get family "$section" family ipv4
+	config_get family "$section" family
 	config_get match "$section" match
 	config_get type "$section" type # allows user to explicity specify the nft set type
 	config_get size "$section" maxelem
@@ -594,11 +607,10 @@ create_user_set() {
 		error=1
 	fi
 	parse_set_loadfile || error=1
-	determine_set_family "$entries $loadfile_entries" || {
+	parse_set_entries "$entries $loadfile_entries" || {
 		log warning "Could not determine the family of ipset ${name:+$name }"
 		error=1
 	}
-
 	parse_set_type || error=1
 	parse_set_timeout || error=1
 	parse_set_flags || error=1
@@ -609,7 +621,7 @@ create_user_set() {
 		post_include "add set inet $TABLE $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
 	}
 
-	[ -n "$entries$loadfile_entries" ] && post_include "add element inet $TABLE $name $(nft_element_list "$entries $loadfile_entries")"
+	[ -n "$validated_entries" ] && post_include "add element inet $TABLE $name $(nft_element_list "$validated_entries")"
 
 	# Store set type for use in user rules
 	case $family in
@@ -693,6 +705,7 @@ rule_port() {
 	return 0
 }
 
+# shellcheck disable=SC2016
 rule_addr() {
 	local direction="$1" addresses="$2" family="$3" xaddr
 	local ipv4 ipv4_negate ipset ipset_negate
@@ -711,22 +724,18 @@ rule_addr() {
 	[ -n "$addresses" ] || return 0
 
 	if [ -n "$family" ] && ! check_family "$family"; then
-		# shellcheck disable=SC2016
 		log warning "Rule ${name:+'$name' }contains an invalid family"
 		return 1
 	fi
 	parse_rule_ips "$addresses" || {
-		# shellcheck disable=SC2016
 		log warning "Rule ${name:+'$name' }contains an invalid ${direction}_ip"
 		return 1
 	}
 	if [ -n "$ipv4$ipv4_negate$ipset$ipset_negate" ] && [ "$family" = "ipv6" ]; then
-		# shellcheck disable=SC2016
 		log warning "Rules cannot combine an ipv4 ${direction}_ip with the 'ipv6' family option${name:+, rule: '$name'}"
 		return 1
 	fi
 	if [ -n "$ipv6$ipv6_negate$ipset6$ipset6_negate" ] && [ "$family" = "ipv4" ]; then
-		# shellcheck disable=SC2016
 		log warning "Rules cannot combine an ipv6 ${direction}_ip with the 'ipv4' family option${name:+, rule: '$name'}"
 		return 1
 	fi
