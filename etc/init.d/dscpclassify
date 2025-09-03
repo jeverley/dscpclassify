@@ -825,6 +825,8 @@ create_user_rule() {
 	config_get class "$section" class
 	config_get name "$section" name
 
+	[ "$family" = "any" ] && family=""
+
 	rule_nfproto "$family" || error=1
 	rule_l4proto "$proto" || error=1
 	rule_zone dest "$dest" || error=1
