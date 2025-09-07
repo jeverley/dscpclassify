@@ -901,6 +901,12 @@ create_client_class_adoption_rules() {
 	}
 
 	# Create client class adoption rules
+	[ -z "$saddr_list" ] && {
+		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY ip dscp != $exclude_class ip dscp vmap @dscp_ct"
+	}
+	[ -z "$saddr6_list" ] && {
+		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
+	}
 	for saddr in $saddr_list; do
 		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr ip dscp != $exclude_class ip dscp vmap @dscp_ct"
 	done
