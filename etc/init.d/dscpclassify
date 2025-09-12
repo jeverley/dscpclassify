@@ -46,7 +46,6 @@ MAIN="/etc/${SERVICE_NAME}.d/main.nft"
 VERDICTS="/etc/${SERVICE_NAME}.d/verdicts.nft"
 MAPS="/etc/${SERVICE_NAME}.d/maps.nft"
 
-
 log() {
 	local level="$1" message="$2"
 	logger -t "$SERVICE_NAME" -p "daemon.${level}" "$message"
@@ -84,6 +83,16 @@ check_minimum_kernel_release() {
 		return 0
 	fi 2>/dev/null
 	return 1
+}
+
+determine_compatibility() {
+	[ -z "$compat_nft_destroy" ] && {
+		check_minimum_kernel_release "$KERNEL_VERSION_NFT_DESTROY" && compat_nft_destroy=1 || compat_nft_destroy=0
+	}
+	[ -z "$compat_dscp_le" ] && {
+		check_minimum_kernel_release "$KERNEL_VERSION_DSCP_LE" && compat_dscp_le=1 || compat_dscp_le=0
+	}
+	return 0
 }
 
 get_zone_interfaces() {
@@ -164,10 +173,6 @@ nft_script_compat() {
 	# The latest kernels also return an error when destroy is used with non-existent sets
 	local command="$1" table element
 
-	[ -z "$_nft_destroy_action" ] && {
-		check_minimum_kernel_release "$KERNEL_VERSION_NFT_DESTROY" && _nft_destroy_action="destroy" || _nft_destroy_action="delete"
-	}
-
 	table=$(echo "$command" | awk '{print $4}')
 	element=$(echo "$command" | awk '{print $5}')
 	case "$command" in
@@ -176,7 +181,9 @@ nft_script_compat() {
 	"destroy table "*) nft_table_exists "$table" || return 1 ;;
 	esac
 
-	echo "$command" | sed "s/^destroy /$_nft_destroy_action /"
+	[ "$compat_nft_destroy" = 1 ] || command=$(echo "$command" | sed "s/^destroy /delete /")
+
+	echo "$command"
 	return 0
 }
 
@@ -385,8 +392,8 @@ parse_dscp_class() {
 	class="$(echo "$class" | tr 'A-Z' 'a-z')"
 	case "$class" in
 	be | df) class="cs0" ;; # CS0 aliases
-	le) check_minimum_kernel_release "$KERNEL_VERSION_DSCP_LE" || {
-		log warning "DSCP class 'le' is not supported by the current kernel"
+	le) [ "$compat_dscp_le" = 1 ] || {
+		log warning "DSCP class 'le' is not supported by kernel versions < ${MIN_KERNEL_DSCP_LE}"
 		return 1
 	} ;;
 	cs0 | cs1 | af11 | af12 | af13 | cs2 | af21 | af22 | af23 | cs3 | af31 | af32 | af33 | cs4 | af41 | af42 | af43 | cs5 | va | ef | cs6 | cs7) true ;;
@@ -437,8 +444,8 @@ parse_rule_addr() {
 		}
 		check_addr_ether "$i" && {
 			case "$i" in
-			"!"*) mac_negate="$mac_negate ${i#*!}" ;;
-			*) mac="$mac $i" ;;
+			"!"*) ether_negate="$ether_negate ${i#*!}" ;;
+			*) ether="$ether $i" ;;
 			esac
 			continue
 		}
@@ -455,8 +462,8 @@ parse_rule_addr() {
 		esac
 		match_set "$i" "$sets_ether"
 		case $? in
-		  0) macset="${macset:+$macset }$i"; continue ;;
-		  1) macset_negate="${macset_negate:+$macset_negate }${i#*!}"; continue ;;
+		  0) etherset="${etherset:+$etherset }$i"; continue ;;
+		  1) etherset_negate="${etherset_negate:+$etherset_negate }${i#*!}"; continue ;;
 		esac
 
 		log warning "Invalid addr/set: $i"
@@ -734,7 +741,7 @@ rule_port() {
 # shellcheck disable=SC2016
 rule_addr() {
 	local direction="$1" addresses="$2" type="$3" addr_type="$4" xaddr
-	local mac mac_negate ipsetmac macset_negate
+	local ether ether_negate ipsetmac etherset_negate
 	local ipv4 ipv4_negate ipset ipset_negate
 	local ipv6 ipv6_negate ipset6 ipset6_negate
 	local rule_list rule6_list negate negate6
@@ -746,7 +753,7 @@ rule_addr() {
 	esac
 
 	case "$type" in
-	ip | mac)  true ;;
+	ip | ether)  true ;;
 	*) log err "Invalid type for addr rule"; return 1 ;;
 	esac
 
@@ -766,27 +773,32 @@ rule_addr() {
 	fi
 
 	# Create negate for addresses and sets of the same type
-	for entry in $ipset_negate "${ipv4_negate:+$(nft_element_list "$ipv4_negate")}"; do
-		[ -n "$entry" ] && negate_ip="ip $xaddr != $entry $negate_ip"
+	[ -n "$ipv4_negate" ] && ipv4_negate="$(nft_element_list "$ipv4_negate")"
+	for entry in $ipset_negate $ipv4_negate; do
+		negate_ip="ip $xaddr != $entry $negate_ip"
 	done
-	for entry in $ipset6_negate "${ipv6_negate:+$(nft_element_list "$ipv6_negate")}"; do
-		[ -n "$entry" ] && negate_ip6="ip6 $xaddr != $entry $negate_ip6"
+	[ -n "$ipv6_negate" ] && ipv6_negate="$(nft_element_list "$ipv6_negate")"
+	for entry in $ipset6_negate $ipv6_negate; do
+		negate_ip6="ip6 $xaddr != $entry $negate_ip6"
 	done
-	for entry in $macset_negate "${mac_negate:+$(nft_element_list "$mac_negate")}"; do
-		[ -n "$entry" ] && negate_mac="ether $xaddr != $entry $negate_mac"
+	[ -n "$ether_negate" ] && ether_negate="$(nft_element_list "$ether_negate")"
+	for entry in $etherset_negate $ether_negate; do
+		negate_ether="ether $xaddr != $entry $negate_ether"
 	done
 
 	# Create an address rule per allowed address/set
-	for entry in $ipset "${ipv4:+$(nft_element_list "$ipv4")}"; do
-		[ -n "$entry" ] && rule_list=${rule_list:+${rule_list}$'\n'}"ip $xaddr $entry $negate_ip $negate_mac"
+	[ -n "$ipv4" ] && ipv4="$(nft_element_list "$ipv4")"
+	for entry in $ipset $ipv4; do
+		rule_list=${rule_list:+${rule_list}$'\n'}"ip $xaddr $entry $negate_ip $negate_ether"
 	done
-	for entry in $ipset6 "${ipv6:+$(nft_element_list "$ipv6")}"; do
-		[ -n "$entry" ] && rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip6 $xaddr $entry $negate_ip6 $negate_mac"
+	[ -n "$ipv6" ] && ipv6="$(nft_element_list "$ipv6")"
+	for entry in $ipset6 $ipv6; do
+		rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip6 $xaddr $entry $negate_ip6 $negate_ether"
 	done
-	for entry in $macset "${mac:+$(nft_element_list "$mac")}"; do
-		[ -n "$entry" ] || continue
-		[ "$family" != "$FAMILY_IPV6" ] && rule_list=${rule_list:+${rule_list}$'\n'}"ether $xaddr $entry $negate_ip $negate_mac"
-		[ "$family" != "$FAMILY_IPV4" ] && rule6_list=${rule6_list:+${rule6_list}$'\n'}"ether $xaddr $entry $negate_ip6 $negate_mac"
+	[ -n "$ether" ] && ether="$(nft_element_list "$ether")"
+	for entry in $etherset $ether; do
+		[ "$family" != "$FAMILY_IPV6" ] && rule_list=${rule_list:+${rule_list}$'\n'}"ether $xaddr $entry $negate_ip $negate_ether"
+		[ "$family" != "$FAMILY_IPV4" ] && rule6_list=${rule6_list:+${rule6_list}$'\n'}"ether $xaddr $entry $negate_ip6 $negate_ether"
 	done
 
 	eval ip_"$xaddr"_list='$rule_list'
@@ -864,11 +876,11 @@ create_user_rule() {
 	rule_nfproto "$family" || error=1
 	rule_l4proto "$proto" || error=1
 	rule_zone dest "$dest" || error=1
-	rule_addr dest "$dest_mac" mac "$family" || error=1
+	rule_addr dest "$dest_mac" ether "$family" || error=1
 	rule_addr dest "$dest_ip" ip "$family" || error=1
 	rule_port dest "$dest_port" "$proto" || error=1
 	rule_zone src "$src" || error=1
-	rule_addr src "$src_mac" mac "$family" || error=1
+	rule_addr src "$src_mac" ether "$family" || error=1
 	rule_addr src "$src_ip" ip "$family" || error=1
 	rule_port src "$src_port" "$proto" || error=1
 	rule_device "$device" "$direction" || error=1
@@ -936,7 +948,7 @@ create_client_class_adoption_rules() {
 		log err "The client_class_adoption src_ip config is invalid"
 		return 1
 	}
-	rule_addr src "$src_mac" mac || {
+	rule_addr src "$src_mac" ether || {
 		log err "The client_class_adoption src_mac config is invalid"
 		return 1
 	}
@@ -944,14 +956,12 @@ create_client_class_adoption_rules() {
 	# Create client class adoption rules
 	[ -z "$ip_saddr_list" ] && {
 		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY ip dscp != $exclude_class ip dscp vmap @dscp_ct"
-	}
-	[ -z "$ip6_saddr_list" ] && {
-		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
-	}
-	for saddr in $ip_saddr_list; do
+	} || for saddr in $ip_saddr_list; do
 		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr ip dscp != $exclude_class ip dscp vmap @dscp_ct"
 	done
-	for saddr6 in $ip6_saddr_list; do
+	[ -z "$ip6_saddr_list" ] && {
+		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
+	} || for saddr6 in $ip6_saddr_list; do
 		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr6 ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
 	done
 
@@ -1291,20 +1301,25 @@ setup() {
 	local client_class_adoption_config
 	local bulk_client_detection_config
 	local high_throughput_service_detection_config
+	local compat_dscp_le compat_nft_destroy
 
 	local class_low_effort="le"
 	local class_high_throughput="af13"
 
-	check_minimum_kernel_release "$KERNEL_VERSION_DSCP_LE" || {
-		log info "Falling back to CS1 for default Low Effort class due to Kernel version < 5.13"
-		class_low_effort="cs1"
+	determine_compatibility || {
+		log err "Failed to determine system compatibility"
+		return 1
 	}
-
 	cleanup_setup
 	migrate_config
 	config_load "$CONFIG" || {
 		log err "Failed to load config file"
 		return 1
+	}
+
+	[ "$compat_dscp_le" = 1 ] || {
+		log info "Falling back to CS1 for default Low Effort class due to Kernel version < ${MIN_KERNEL_DSCP_LE}"
+		class_low_effort="cs1"
 	}
 
 	config_get_exclusive_section service_config service
