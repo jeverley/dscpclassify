@@ -430,40 +430,40 @@ parse_rule_addr() {
 	for i in $(printf '%s\n' $addresses | sort -u); do
 		check_addr_ipv4 "$i" && {
 			case "$i" in
-			"!"*) ipv4_negate="$ipv4_negate ${i#*!}" ;;
-			*) ipv4="$ipv4 $i" ;;
+			"!"*) ipv4_addr_negate="$ipv4_addr_negate ${i#*!}" ;;
+			*) ipv4_addr="$ipv4_addr $i" ;;
 			esac
 			continue
 		}
 		check_addr_ipv6 "$i" && {
 			case "$i" in
-			"!"*) ipv6_negate="$ipv6_negate ${i#*!}" ;;
-			*) ipv6="$ipv6 $i" ;;
+			"!"*) ipv6_addr_negate="$ipv6_addr_negate ${i#*!}" ;;
+			*) ipv6_addr="$ipv6_addr $i" ;;
 			esac
 			continue
 		}
 		check_addr_ether "$i" && {
 			case "$i" in
-			"!"*) ether_negate="$ether_negate ${i#*!}" ;;
-			*) ether="$ether $i" ;;
+			"!"*) ether_addr_negate="$ether_addr_negate ${i#*!}" ;;
+			*) ether_addr="$ether_addr $i" ;;
 			esac
 			continue
 		}
 
 		match_set "$i" "$sets_ipv4"
 		case $? in
-		  0) ipset="${ipset:+$ipset }$i"; continue ;;
-		  1) ipset_negate="${ipset_negate:+$ipset_negate }${i#*!}"; continue ;;
+		  0) ipv4_set="${ipv4_set:+$ipv4_set }$i"; continue ;;
+		  1) ipv4_set_negate="${ipv4_set_negate:+$ipv4_set_negate }${i#*!}"; continue ;;
 		esac
 		match_set "$i" "$sets_ipv6"
 		case $? in
-		  0) ipset6="${ipset6:+$ipset6 }$i"; continue ;;
-		  1) ipset6_negate="${ipset6_negate:+$ipset6_negate }${i#*!}"; continue ;;
+		  0) ipv6_set="${ipv6_set:+$ipv6_set }$i"; continue ;;
+		  1) ipv6_set_negate="${ipv6_set_negate:+$ipv6_set_negate }${i#*!}"; continue ;;
 		esac
 		match_set "$i" "$sets_ether"
 		case $? in
-		  0) etherset="${etherset:+$etherset }$i"; continue ;;
-		  1) etherset_negate="${etherset_negate:+$etherset_negate }${i#*!}"; continue ;;
+		  0) ether_set="${ether_set:+$ether_set }$i"; continue ;;
+		  1) ether_set_negate="${ether_set_negate:+$ether_set_negate }${i#*!}"; continue ;;
 		esac
 
 		log warning "Invalid addr/set: $i"
@@ -741,9 +741,9 @@ rule_port() {
 # shellcheck disable=SC2016
 rule_addr() {
 	local direction="$1" addresses="$2" type="$3" addr_type="$4" xaddr
-	local ether ether_negate ipsetmac etherset_negate
-	local ipv4 ipv4_negate ipset ipset_negate
-	local ipv6 ipv6_negate ipset6 ipset6_negate
+	local ether ether_addr_negate ether_set ether_set_negate
+	local ipv4_addr ipv4_addr_negate ipv4_set ipv4_set_negate
+	local ipv6_addr ipv6_addr_negate ipv6_set ipv6_set_negate
 	local rule_list rule6_list negate negate6
 
 	case "$direction" in
@@ -763,40 +763,40 @@ rule_addr() {
 		log warning "Rule ${name:+'$name' }contains an invalid ${direction}_${type}"
 		return 1
 	}
-	if [ -n "$ipv4$ipv4_negate$ipset$ipset_negate" ] && [ "$family" = "$FAMILY_IPV6" ]; then
+	if [ -n "$ipv4_addr$ipv4_addr_negate$ipv4_set$ipv4_set_negate" ] && [ "$family" = "$FAMILY_IPV6" ]; then
 		log warning "Rules cannot combine an $FAMILY_IPV4 ${direction}_ip with the '$FAMILY_IPV6' family option${name:+, rule: '$name'}"
 		return 1
 	fi
-	if [ -n "$ipv6$ipv6_negate$ipset6$ipset6_negate" ] && [ "$family" = "$FAMILY_IPV4" ]; then
+	if [ -n "$ipv6_addr$ipv6_addr_negate$ipv6_set$ipv6_set_negate" ] && [ "$family" = "$FAMILY_IPV4" ]; then
 		log warning "Rules cannot combine an $FAMILY_IPV6 ${direction}_ip with the '$FAMILY_IPV4' family option${name:+, rule: '$name'}"
 		return 1
 	fi
 
 	# Create negate for addresses and sets of the same type
-	[ -n "$ipv4_negate" ] && ipv4_negate="$(nft_element_list "$ipv4_negate")"
-	for entry in $ipset_negate ${ipv4_negate:+"$ipv4_negate"}; do
+	[ -n "$ipv4_addr_negate" ] && ipv4_addr_negate="$(nft_element_list "$ipv4_addr_negate")"
+	for entry in $ipv4_set_negate ${ipv4_addr_negate:+"$ipv4_addr_negate"}; do
 		negate_ip="ip $xaddr != $entry $negate_ip"
 	done
-	[ -n "$ipv6_negate" ] && ipv6_negate="$(nft_element_list "$ipv6_negate")"
-	for entry in $ipset6_negate ${ipv6_negate:+"$ipv6_negate"}; do
+	[ -n "$ipv6_addr_negate" ] && ipv6_addr_negate="$(nft_element_list "$ipv6_addr_negate")"
+	for entry in $ipv6_set_negate ${ipv6_addr_negate:+"$ipv6_addr_negate"}; do
 		negate_ip6="ip6 $xaddr != $entry $negate_ip6"
 	done
-	[ -n "$ether_negate" ] && ether_negate="$(nft_element_list "$ether_negate")"
-	for entry in $etherset_negate ${ether_negate:+"$ether_negate"}; do
+	[ -n "$ether_addr_negate" ] && ether_addr_negate="$(nft_element_list "$ether_addr_negate")"
+	for entry in $ether_set_negate ${ether_addr_negate:+"$ether_addr_negate"}; do
 		negate_ether="ether $xaddr != $entry $negate_ether"
 	done
 
 	# Create an address rule per allowed address/set
-	[ -n "$ipv4" ] && ipv4="$(nft_element_list "$ipv4")"
-	for entry in $ipset ${ipv4:+"$ipv4"}; do
+	[ -n "$ipv4_addr" ] && ipv4_addr="$(nft_element_list "$ipv4_addr")"
+	for entry in $ipv4_set ${ipv4_addr:+"$ipv4_addr"}; do
 		rule_list=${rule_list:+${rule_list}$'\n'}"ip $xaddr $entry $negate_ip $negate_ether"
 	done
-	[ -n "$ipv6" ] && ipv6="$(nft_element_list "$ipv6")"
-	for entry in $ipset6 ${ipv6:+"$ipv6"}; do
+	[ -n "$ipv6_addr" ] && ipv6_addr="$(nft_element_list "$ipv6_addr")"
+	for entry in $ipv6_set ${ipv6_addr:+"$ipv6_addr"}; do
 		rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip6 $xaddr $entry $negate_ip6 $negate_ether"
 	done
 	[ -n "$ether" ] && ether="$(nft_element_list "$ether")"
-	for entry in $etherset ${ether:+"$ether"}; do
+	for entry in $ether_set ${ether:+"$ether"}; do
 		[ "$family" != "$FAMILY_IPV6" ] && rule_list=${rule_list:+${rule_list}$'\n'}"ether $xaddr $entry $negate_ip $negate_ether"
 		[ "$family" != "$FAMILY_IPV4" ] && rule6_list=${rule6_list:+${rule6_list}$'\n'}"ether $xaddr $entry $negate_ip6 $negate_ether"
 	done
