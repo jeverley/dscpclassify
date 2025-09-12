@@ -795,8 +795,8 @@ rule_addr() {
 	for entry in $ipv6_set ${ipv6_addr:+"$ipv6_addr"}; do
 		rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip6 $xaddr $entry $negate_ip6 $negate_ether"
 	done
-	[ -n "$ether" ] && ether="$(nft_element_list "$ether")"
-	for entry in $ether_set ${ether:+"$ether"}; do
+	[ -n "$ether_addr" ] && ether_addr="$(nft_element_list "$ether_addr")"
+	for entry in $ether_set ${ether_addr:+"$ether_addr"}; do
 		[ "$family" != "$FAMILY_IPV6" ] && rule_list=${rule_list:+${rule_list}$'\n'}"ether $xaddr $entry $negate_ip $negate_ether"
 		[ "$family" != "$FAMILY_IPV4" ] && rule6_list=${rule6_list:+${rule6_list}$'\n'}"ether $xaddr $entry $negate_ip6 $negate_ether"
 	done
