@@ -10,7 +10,7 @@ _Users of layer-cake SQM should install the [layer_cake_ct](#layer_cake_ctqos) S
 
 ## User Rules 📝
 You can create rules to classify new connections in the service [config file](#configuration-%EF%B8%8F).\
-These use a similar syntax to the OpenWrt firewall config and can match source and destination ports, addresses, ipsets, firewall zones etc.
+These use a similar syntax to the OpenWrt firewall config and can match source and destination ports, addresses, sets, firewall zones etc.
 
 More information and examples can be found in the [rules section](#section-rule).
 
@@ -124,16 +124,16 @@ The OpenWrt fw4 rule syntax is outlined in the [OpenWrt Wiki](https://openwrt.or
 |family | string | no | | Specifies the address family (`ipv4`, `ipv6` or `any`) for which the rules are generated. |
 |proto | list | no | | Match traffic using the given protocol. Can be one (or several when using list syntax) of `tcp`, `udp`, `udplite`, `icmp`, `esp`, `ah`, `sctp`, or `all`. A protocol name from /etc/protocols is also allowed. |
 |dest | list | no | | Specifies the traffic destination firewall zone. Refers to one of the defined zone names. |
-|dest_ip | list | no | | Match traffic directed to the specified destination IP address, CIDR notations can be used. IP set names can be specified with the `@` prefix<sup>1</sup>. |
+|dest_ip | list | no | | Match traffic directed to the specified destination IP address, CIDR notations can be used. Set names can be specified with the `@` prefix<sup>1</sup>. |
 |dest_port | list | no | | Match traffic to the specified source port or port range. |
 |src | list | no | | Specifies the traffic source firewall zone. Refers to one of the defined zone names. |
-|src_ip | list | no | | Match traffic from the specified source IP address, CIDR notations can be used. ipset names can be specified with the `@` prefix<sup>1</sup>. |
+|src_ip | list | no | | Match traffic from the specified source IP address, CIDR notations can be used. Set names can be specified with the `@` prefix<sup>1</sup>. |
 |src_port | list | no | | Match traffic from the specified source port or port range. |
 |device | string | no | | Match traffic going in/out of a particular L3 device. |
 |direction | string | no | | Must be used in conjunction with `device`, specifies whether to match traffic travelling `in` or `out`. |
 |counter | boolean | no | 0 | Enables an nft counter that counts connections matched by the rule. |
 
-_1. Vervsions ≥ 2.0 allow a mix of ipsets, ipv4 and ipv6 addresses._
+_1. Vervsions ≥ 2.0 allow a mix of sets, ipv4 and ipv6 addresses._
 
 #### Example user rule 📃
 
@@ -153,35 +153,35 @@ config rule
 	option counter	'0'
 ```
 
-### Section "ipset"
-The ipset sections in `/etc/config/dscpclassify` use a similar syntax to OpenWrt's firewall, they can be used in conjunction with rules for dynamically populated ip matching.\
-The OpenWrt fw4 ipset syntax is outlined in the [OpenWrt Wiki](https://openwrt.org/docs/guide-user/firewall/firewall_configuration#options_fw4), dscpclassify default rules can be viewed [here](https://github.com/jeverley/dscpclassify/blob/main/etc/config/dscpclassify).
+### Section "set"
+The set sections in `/etc/config/dscpclassify` use a similar syntax to OpenWrt's firewall, they can be used in conjunction with rules for dynamically populated ip matching.\
+DSCP classify's default rules can be viewed [here](https://github.com/jeverley/dscpclassify/blob/main/etc/config/dscpclassify).
 
-The key difference is that ipsets can be referenced using dest_ip/src_ip, with their name prefixed with '@'.
+The key difference is that sets can be referenced using dest_ip/src_ip, with their name prefixed with '@'.
 
 |Name | Type | Required | Default | Description|
 |--- | --- | --- | --- | ---|
-|enabled | boolean | no | 1 | Allows to disable the declaration of the ipset without the need to delete the section. | 
-|name | string | **yes** | | Name of the IP set. |
+|enabled | boolean | no | 1 | Allows to disable the declaration of the set without the need to delete the section. | 
+|name | string | **yes** | | Name of the set. |
 |comment | string | no | | A user defined comment associated with the set. |
-|family | string | no | | Specifies the address family (`ipv4`, `ipv6`) for the IP set, if absent the service tries to identify this from the address entries<sup>1</sup>. |
+|family | string | no | | Specifies the address family (`ipv4`, `ipv6`) for the set, if absent the service tries to identify this from the address entries<sup>1</sup>. |
 |maxelem | uint | no | | Limits the number of entries that can be added to the set. |
 |timeout | uint | no | | Specifies the default timeout for entries added to the set. A value of 0 enables the timeout capability flag on the set, but does not put a timeout on entries. |
 |entry | list | no | | IP address or CIDR notation. |
 |loadfile | string | no | | A path URL on the openwrt filesystem to a file containing a list of CIDRs. |
 
-_1. Vervsions ≥ 2.0 will attempt to autodetect an ipset's family if the option is not specified._
+_1. Vervsions ≥ 2.0 will attempt to autodetect a set's family if the option is not specified._
 
-#### Example ipset and rule 📃
+#### Example set and rule 📃
 
 ```
-config ipset
+config set
 	option name 'ms_teams'
 	list entry '13.107.64.0/18'
 	list entry '52.112.0.0/14'
 	list entry '52.122.0.0/15'
 
-config ipset
+config set
 	option name 'ms_teams6'
 	option family 'ipv6'
 	list entry '2603:1063::/39'

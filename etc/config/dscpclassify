@@ -16,27 +16,27 @@ config high_throughput_service_detection
 	option min_bytes '1000000'
 	option min_connections '3'
 
-config ipset
+config set
 	option name 'ms_teams'
 	list entry '13.107.64.0/18'
 	list entry '52.112.0.0/14'
 	list entry '52.122.0.0/15'
 
-config ipset
+config set
 	option name 'ms_teams6'
 	option family 'ipv6'
 	list entry '2603:1063::/39'
 
-config ipset
+config set
 	option name 'xcloud'
 	list entry '13.104.0.0/14' # Western Europe
 
-config ipset
+config set
 	option name 'xcloud6'
 	option family 'ipv6'
 	list entry '2603:1000::/24' # Western Europe
 
-config ipset
+config set
 	option name 'zoom_meet'
 	option family 'ipv4'
 	list entry '3.7.35.0/25'
@@ -72,7 +72,7 @@ config ipset
 	list entry '120.29.148.0/24'
 	list entry '121.244.146.0/27'
 	list entry '134.224.0.0/16'
-	list entry '137.66.128.0/17 '
+	list entry '137.66.128.0/17'
 	list entry '144.195.0.0/16'
 	list entry '147.124.96.0/19'
 	list entry '149.137.0.0/17'
@@ -84,7 +84,7 @@ config ipset
 	list entry '162.255.36.0/22'
 	list entry '165.254.88.0/23'
 	list entry '166.108.64.0/18'
-	list entry '168.140.0.0/17 '
+	list entry '168.140.0.0/17'
 	list entry '170.114.0.0/16'
 	list entry '173.231.80.0/20'
 	list entry '192.204.12.0/22'
@@ -107,14 +107,14 @@ config ipset
 	list entry '221.122.89.128/25'
 	list entry '221.123.139.192/27'
 
-config ipset
+config set
 	option name 'zoom_meet6'
 	option family 'ipv6'
 	list entry '2407:30C0::/32'
 	list entry '2600:9000:2600::/48'
 	list entry '2620:123:2000::/40'
 
-config ipset
+config set
 	option name 'zoom_phone'
 	list entry '8.5.128.0/24'
 	list entry '64.211.144.0/24'
@@ -143,7 +143,7 @@ config ipset
 	list entry '213.244.140.0/24'
 	list entry '221.122.63.0/24'
 
-config ipset
+config set
 	option name 'zoom_phone6'
 	option family 'ipv6'
 	list entry '2620:123:2000::/40'
@@ -192,7 +192,7 @@ config rule
 	list dest_port '5353'
 	option class 'cs5'
 
-config ipset
+config set
 	option name 'DoH'
 	list entry '8.8.8.8'			# Google
 	list entry '8.8.4.4'			# Google
@@ -203,7 +203,7 @@ config ipset
 	list entry '9.9.9.11'			# Quad9 Secured w/ECS
 	list entry '149.112.112.11'		# Quad9 Secured w/ECS
 
-config ipset
+config set
 	option name 'DoH6'
 	list entry '2001:4860:4860::8888'	# Google
 	list entry '2001:4860:4860::8844'	# Google
@@ -218,7 +218,7 @@ config ipset
 	list entry '2a10:50c0::ded:ff'		# AdGuard Dedicated
 
 config rule
-	option name 'DoH'
+	option name 'DNS over HTTPS/QUIC'
 	list proto 'tcp'
 	list proto 'udp'
 	list dest_port '443'

@@ -4,23 +4,43 @@
 # shellcheck disable=SC2034
 START=50
 USE_PROCD=1
-DEBUG=1
 
 # Service constants
 SERVICE_NAME="dscpclassify"
 TABLE="$SERVICE_NAME"
-CONFIG="$SERVICE_NAME"
+CLASS_BULK="cs1"
+CLASS_LOW_EFFORT="le"
+CLASS_HIGH_THROUGHPUT="af13"
 
-# Chain names
-CHAIN_CLIENT_CLASSIFY="client_classify"
-CHAIN_DYNAMIC_CLASSIFY="dynamic_classify"
-CHAIN_DYNAMIC_CLASSIFY_REPLY="dynamic_classify_reply"
-CHAIN_ESTABLISHED_CONNECTION="established_connection"
-CHAIN_RULE_CLASSIFY="rule_classify"
-CHAIN_BULK_CLIENT="bulk_client"
-CHAIN_BULK_CLIENT_REPLY="bulk_client_reply"
-CHAIN_HIGH_THROUGHPUT_SERVICE="high_throughput_service"
-CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY="high_throughput_service_reply"
+# Service defaults
+DEFAULT_CLASS_LOW_EFFORT="$CLASS_LOW_EFFORT"
+DEFAULT_CLASS_HIGH_THROUGHPUT="$CLASS_HIGH_THROUGHPUT"
+
+# Config sections
+CONFIG="$SERVICE_NAME"
+CONFIG_CLIENT_CLASS_ADOPTION="client_class_adoption"
+CONFIG_BULK_CLIENT_DETECTION="bulk_client_detection"
+CONFIG_HIGH_THROUGHPUT_SERVICE_DETECTION="high_throughput_service_detection"
+CONFIG_RULE="rule"
+CONFIG_SET="set"
+
+# NFT variable names
+NFT_VAR_CLASS_LE="lephb"
+NFT_VAR_CT_DSCP="ct_dscp"
+NFT_VAR_CT_DYNAMIC="ct_dynamic"
+
+# Protocol families
+FAMILY_IPV4="ipv4"
+FAMILY_IPV6="ipv6"
+
+# Address types
+ADDR_IPV4="${FAMILY_IPV4}_addr"
+ADDR_IPV6="${FAMILY_IPV6}_addr"
+ADDR_ETHER="ether_addr"
+
+# Kernel compatibility
+KERNEL_VERSION_DSCP_LE="5.13"
+KERNEL_VERSION_NFT_DESTROY="6.3"
 
 # Dynamic content
 DEBUG_FILE="/tmp/${SERVICE_NAME}.debug"
@@ -32,6 +52,33 @@ POST_INCLUDE="${INCLUDES_PATH}/post-include.nft"
 MAIN="/etc/${SERVICE_NAME}.d/main.nft"
 VERDICTS="/etc/${SERVICE_NAME}.d/verdicts.nft"
 MAPS="/etc/${SERVICE_NAME}.d/maps.nft"
+
+# Chain names
+CHAIN_CLIENT_CLASSIFY="client_classify"
+CHAIN_DYNAMIC_CLASSIFY="dynamic_classify"
+CHAIN_DYNAMIC_CLASSIFY_REPLY="${CHAIN_DYNAMIC_CLASSIFY}_reply"
+CHAIN_ESTABLISHED_CONNECTION="established_connection"
+CHAIN_BULK_CLIENT="bulk_client"
+CHAIN_BULK_CLIENT_REPLY="${CHAIN_BULK_CLIENT}_reply"
+CHAIN_HIGH_THROUGHPUT_SERVICE="high_throughput_service"
+CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY="${CHAIN_HIGH_THROUGHPUT_SERVICE}_reply"
+CHAIN_RULE_CLASSIFY="rule_classify"
+
+# Set names
+SET_BULK_CLIENTS="bulk_clients"
+SET_BULK_CLIENTS6="${SET_BULK_CLIENTS}6"
+SET_HIGH_THROUGHPUT_SERVICES="high_throughput_services"
+SET_HIGH_THROUGHPUT_SERVICES6="${SET_HIGH_THROUGHPUT_SERVICES}6"
+
+# Meter names
+METER_BULK_CLIENT_DETECT="bulk_client_detect"
+METER_BULK_CLIENT_DETECT6="${METER_BULK_CLIENT_DETECT}6"
+METER_BULK_CLIENT_ORIG_CLASSIFY="bulk_client_orig_classify"
+METER_BULK_CLIENT_ORIG_CLASSIFY6="${METER_BULK_CLIENT_ORIG_CLASSIFY}6"
+METER_BULK_CLIENT_REPLY_CLASSIFY="bulk_client_reply_classify"
+METER_BULK_CLIENT_REPLY_CLASSIFY6="${METER_BULK_CLIENT_REPLY_CLASSIFY}6"
+METER_HIGH_THROUGHPUT_SERVICE_DETECT="high_throughput_service_detect"
+METER_HIGH_THROUGHPUT_SERVICE_DETECT6="${METER_HIGH_THROUGHPUT_SERVICE_DETECT}6"
 
 
 log() {
@@ -55,6 +102,40 @@ create_debug_file() {
 		nft list table inet "$TABLE" 2>&1
 	} > "$DEBUG_FILE"
 	log info "Debug information saved in $DEBUG_FILE"
+}
+
+check_minimum_kernel_release() {
+	local minimum_release="$1"
+	local current_release current_major current_minor minimum_major minimum_minor
+
+	minimum_major=$(echo "$minimum_release" | awk -F '.' '{print $1}')
+	minimum_minor=$(echo "$minimum_release" | awk -F '.' '{print $2}')
+	current_release=$(uname -r)
+	current_major=$(echo "$current_release" | awk -F '.' '{print $1}')
+	current_minor=$(echo "$current_release" | awk -F '.' '{print $2}')
+	
+	if [ "$current_major" -gt "$minimum_major" ] || { [ "$current_major" = "$minimum_major" ] && [ "$current_minor" -ge "${minimum_minor:-0}" ]; }; then
+		return 0
+	fi 2>/dev/null
+	return 1
+}
+
+determine_compatibility() {
+	[ -z "$compat_nft_destroy" ] && {
+		check_minimum_kernel_release "$KERNEL_VERSION_NFT_DESTROY" && compat_nft_destroy=1 || compat_nft_destroy=0
+	}
+	[ -z "$compat_dscp_le" ] && {
+		check_minimum_kernel_release "$KERNEL_VERSION_DSCP_LE" && compat_dscp_le=1 || compat_dscp_le=0
+	}
+	return 0
+}
+
+get_zone_interfaces() {
+	local interfaces
+
+	interfaces="$(fw4 -q zone "$1" | sort -u)"
+	[ -n "$interfaces" ] || return 1
+	echo "$interfaces"
 }
 
 delete_debug_file() {
@@ -81,47 +162,85 @@ cleanup_setup() {
 	delete_includes
 }
 
-check_chain_exists() {
-	nft -t list chain inet "$TABLE" "$1" &>/dev/null
+format_list() {
+	local items="$1" delimiter="$2" encapsulator="$3" wrapper="$4"
+	local list
+
+	list=$(echo "$items" | tr '\n' ' ' | sed -e "s/^\s*/${encapsulator}/" -e "s/\s*$/${encapsulator}/" -e "s/\s\+/${encapsulator}${delimiter}${encapsulator}/g")
+	case ${#wrapper} in
+	0) echo "$list" ;;
+	2) echo "${wrapper:0:1} ${list} ${wrapper:1:1}" ;;
+	*) return 1 ;;
+	esac
 }
 
-check_set_exists() {
-	nft -t list set inet "$TABLE" "$1" &>/dev/null
+unique_list() {
+	local items="$1"
+	# shellcheck disable=SC2086
+	printf '%s\n' $items | sort -u
 }
 
-check_table_exists() {
-	nft -t list table inet "$TABLE" "$1" &>/dev/null
+nft_element_list() {
+	format_list "$1" ", " "" "{}" 
 }
 
-nft_compatibility() {
+nft_interface_list() {
+	format_list "$1" ", " "\"" "{}" 
+}
+
+nft_flag_list() {
+	format_list "$1" ", "
+}
+
+nft_type_list() {
+	format_list "$1" " . "
+}
+
+nft_chain_exists() {
+	nft -t list chain inet "$1" "$2" &>/dev/null
+}
+
+nft_set_exists() {
+	nft -t list set inet "$1" "$2" &>/dev/null
+}
+
+nft_table_exists() {
+	nft -t list table inet "$1" &>/dev/null
+}
+
+nft_script_compat() {
 	# Handle differences between nft versions
 	# Destroy is not supported in kernel versions < 6.3
 	# The latest kernels also return an error when destroy is used with non-existent sets
-	local command="$1" element
+	local command="$1" table element
 
-	element=$(echo "$command" | awk '{print $NF}')
+	table=$(echo "$command" | awk '{print $4}')
+	element=$(echo "$command" | awk '{print $5}')
 	case "$command" in
-	"destroy chain "*) check_chain_exists "$element" || return 1 ;;
-	"destroy set "*) check_set_exists "$element" || return 1 ;;
-	"destroy table "*) check_table_exists "$element" || return 1 ;;
+	"destroy chain "*) nft_chain_exists "$table" "$element" || return 1 ;;
+	"destroy set "*) nft_set_exists "$table" "$element" || return 1 ;;
+	"destroy table "*) nft_table_exists "$table" || return 1 ;;
 	esac
-	echo "$command" | sed "s/^destroy /$destroy_action /"
+
+	[ "$compat_nft_destroy" = 1 ] || command=$(echo "$command" | sed "s/^destroy /delete /")
+
+	echo "$command"
 	return 0
 }
 
 pre_include() {
 	local command
-	command=$(nft_compatibility "$1") || return 0
+	command=$(nft_script_compat "$1") || return 0
 	echo "$command" >>"$PRE_INCLUDE"
 }
 
 post_include() {
 	local command
-	command=$(nft_compatibility "$1") || return 0
+	command=$(nft_script_compat "$1") || return 0
 	echo "$command" >>"$POST_INCLUDE"
 }
 
-
+# config_foreach_reverse <function> <type> [<arg> ...]
 config_foreach_reverse() {
 	local ___function="$1"
 	local ___type="$2"
@@ -170,82 +289,27 @@ convert_duration_to_seconds() {
 		*) return 1 ;;
 		esac
 	done
-
 	echo "$seconds"
 }
 
-dscp_class() {
-	local class="$1"
-
-	class="$(echo "$class" | tr 'A-Z' 'a-z')"
-	case "$class" in
-	le) true ;;  # RFC-8622
-	be | df) class="cs0" ;;
-	cs0 | cs1 | af11 | af12 | af13 | cs2 | af21 | af22 | af23 | cs3 | af31 | af32 | af33 | cs4 | af41 | af42 | af43 | cs5 | va | ef | cs6 | cs7) true ;;
-	*) return 1 ;;
-	esac
-
-	echo "$class"
+check_uint() {
+	[ "$1" -ge 0 ] 2>/dev/null
 }
 
-format_list() {
-	local items="$1" delimiter="$2" encapsulator="$3" wrapper="$4"
-	local list
-
-	list=$(echo "$items" | tr '\n' ' ' | sed -e "s/^\s*/${encapsulator}/" -e "s/\s*$/${encapsulator}/" -e "s/\s\+/${encapsulator}${delimiter}${encapsulator}/g")
-	case ${#wrapper} in
-	0) echo "$list" ;;
-	2) echo "${wrapper:0:1} ${list} ${wrapper:1:1}" ;;
-	*) return 1 ;;
-	esac
+check_addr_ether() {
+	echo "$1" | grep -q -E -e "^([0-9a-fA-F]{2}[:]){5}[0-9a-fA-F]{2}$"
 }
 
-nft_element_list() {
-	format_list "$1" ", " "" "{}" 
-}
-
-nft_interface_list() {
-	format_list "$1" ", " "\"" "{}" 
-}
-
-nft_flag_list() {
-	format_list "$1" ", "
-}
-
-nft_type_list() {
-	format_list "$1" " . "
-}
-
-fw_zone_interfaces() {
-	local interfaces
-
-	interfaces="$(fw4 -q zone "$1" | sort -u)"
-	[ -n "$interfaces" ] || return 1
-	echo "$interfaces"
-}
-
-check_minimum_kernel_release() {
-	local minimum_release="$1"
-	local current_release current_major current_minor minimum_major minimum_minor
-
-	minimum_major=$(echo "$minimum_release" | awk -F '.' '{print $1}')
-	minimum_minor=$(echo "$minimum_release" | awk -F '.' '{print $2}')
-	current_release=$(uname -r)
-	current_major=$(echo "$current_release" | awk -F '.' '{print $1}')
-	current_minor=$(echo "$current_release" | awk -F '.' '{print $2}')
-	
-	if [ "$current_major" -gt "$minimum_major" ] || { [ "$current_major" = "$minimum_major" ] && [ "$current_minor" -ge "${minimum_minor:-0}" ]; }; then
-		return 0
-	fi 2>/dev/null
-	return 1
-}
-
-check_addr4() {
+check_addr_ipv4() {
 	echo "$1" | grep -q -E -e "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\/(3[0-2]|[12]?[0-9]))?$"
 }
 
-check_addr6() {
-	local addr="$1" colons
+check_addr_ipv6() {
+	local addr="$1"
+	local mask colons segment remaining
+
+	# Reject MAC addresses
+	check_addr_ether "$addr" && return 1
 
 	# Validate CIDR if present
 	case "$addr" in
@@ -266,7 +330,7 @@ check_addr6() {
 	esac
 
 	# Parse segments
-	local segment remaining="$addr"
+	remaining="$addr"
 	while [ -n "$remaining" ]; do
 		case "$remaining" in
 			*:* )
@@ -290,12 +354,13 @@ check_addr6() {
 }
 
 check_addr() {
-	local addr="$1" family="$2"
+	local addr="$1" addr_type="$2"
 
-	case $family in
-	"ipv4") check_addr4 "$addr"; return $? ;;
-	"ipv6") check_addr6 "$addr"; return $? ;;
-	"" ) check_addr4 "$addr" || check_addr6 "$addr"; return $? ;;
+	case $addr_type in
+	"$ADDR_ETHER") check_addr_ether "$addr"; return $? ;;
+	"$ADDR_IPV4") check_addr_ipv4 "$addr"; return $? ;;
+	"$ADDR_IPV6") check_addr_ipv6 "$addr"; return $? ;;
+	"") check_addr_ether "$addr" || check_addr_ipv4 "$addr" || check_addr_ipv6 "$addr"; return $? ;;
 	esac
 	return 1
 }
@@ -306,7 +371,7 @@ check_duration() {
 
 check_family() {
 	case "$1" in
-	ipv4 | ipv6) return 0 ;;
+	"$FAMILY_IPV4" | "$FAMILY_IPV6") return 0 ;;
 	esac
 	return 1
 }
@@ -314,7 +379,7 @@ check_family() {
 check_port_proto() {
 	for i in $1; do
 		case "$i" in
-		tcp | udp) true ;;
+		tcp | udp | udplite) true ;;
 		*) return 1 ;;
 		esac
 	done
@@ -326,11 +391,11 @@ check_set_name() {
 		log warning "Set is missing the name option"
 		return 1
 		;;
-	bulk_clients | bulk_clients6 | high_throughput_services | high_throughput_services6)
+	"$SET_BULK_CLIENTS" | "$SET_BULK_CLIENTS6" | "$SET_HIGH_THROUGHPUT_SERVICES" | "$SET_HIGH_THROUGHPUT_SERVICES6")
 		log warning "Sets cannot overwrite built-in $SERVICE_NAME sets"
 		return 1
 		;;
-	bulk_client_detect | bulk_client_detect6 | bulk_client_orig_classify | bulk_client_orig_classify6 | bulk_client_reply_classify | bulk_client_reply_classify6 | high_throughput_service_detect | high_throughput_service_detect6)
+	"$METER_BULK_CLIENT_DETECT" | "$METER_BULK_CLIENT_DETECT6" | "$METER_BULK_CLIENT_ORIG_CLASSIFY" | "$METER_BULK_CLIENT_ORIG_CLASSIFY6" | "$METER_BULK_CLIENT_REPLY_CLASSIFY" | "$METER_BULK_CLIENT_REPLY_CLASSIFY6" | "$METER_HIGH_THROUGHPUT_SERVICE_DETECT" | "$METER_HIGH_THROUGHPUT_SERVICE_DETECT6")
 		log warning "Sets cannot overwrite built-in $SERVICE_NAME meter sets"
 		return 1
 		;;
@@ -348,36 +413,46 @@ check_set_size() {
 	return 0
 }
 
-check_set_against_existing() {
-	local name="$1" type="$2" comment="$3" size="$4" flags="$5" timeout="$6"
-	local existing_set existing_type
+get_addr_type() {
+	local addr="$1"
 
-	existing_set=$(nft -t -j list set inet "$TABLE" "$name" 2>/dev/null) || return 2
-
-	type="$(echo "$type" | sed 's/\s\+\.\s\+/\n/g')"
-	existing_type="$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.type")"
-	if [ -n "$existing_type" ]; then
-		[ "$existing_type" = "$type" ] || return 1
-	else
-		existing_type="$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.type[*]")"
-		[ "$existing_type" = "$type" ] || return 1
-	fi
-
-	[ "$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.comment")" = "$comment" ] || return 1
-
-	[ "$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.size")" = "$size" ] || return 1
-
-	flags="$(echo "$flags" | sed 's/,\s\+/\n/g' | sort)"
-	[ "$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.flags[*]" | sort)" = "$flags" ] || return 1
-
-	timeout="$(convert_duration_to_seconds "$timeout")"
-	[ "$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.timeout")" = "$timeout" ] || return 1
-
-	return 0
+	check_addr_ipv4 "$addr" && {
+		echo "$ADDR_IPV4"
+		return 0
+	}
+	check_addr_ipv6 "$addr" && {
+		echo "$ADDR_IPV6"
+		return 0
+	}
+	check_addr_ether "$addr" && {
+		echo "$ADDR_ETHER"
+		return 0
+	}
+	return 1
 }
 
-check_uint() {
-	[ "$1" -ge 0 ] 2>/dev/null
+parse_dscp_class() {
+	local class="$1"
+
+	class="$(echo "$class" | tr 'A-Z' 'a-z')"
+	case "$class" in
+	be | df) class="cs0" ;; # CS0 aliases
+	le) [ "$compat_dscp_le" = 1 ] || {
+		log warning "DSCP class 'le' is not supported by kernel versions < ${MIN_KERNEL_DSCP_LE}"
+		return 1
+	} ;;
+	cs0 | cs1 | af11 | af12 | af13 | cs2 | af21 | af22 | af23 | cs3 | af31 | af32 | af33 | cs4 | af41 | af42 | af43 | cs5 | va | ef | cs6 | cs7) true ;;
+	*) return 1 ;;
+	esac
+	echo "$class"
+}
+
+parse_dscp_class_for_var() {
+	local class="$1"
+	class="$(parse_dscp_class "$class")" || return 1
+	[ "$class" = "le" ] && class="$NFT_VAR_CLASS_LE"
+	echo "$class"
+	return 0
 }
 
 parse_rule_ports() {
@@ -390,57 +465,71 @@ parse_rule_ports() {
 	done
 }
 
-parse_rule_ips() {
-	local addresses="$1"
+set_in_user_sets() {
+	local name="$1" match_list="$2"
+	for set in $match_list; do
+		case $name in
+		"@$set") return 0;;
+		"!@$set") return 1;;
+		esac
+	done
+	return 2
+}
 
-	match_ipset() {
-		local name="$1"
-		for set in $2; do
-			case $name in
-			"@$set") return 0;;
-			"!@$set") return 1;;
-			esac
-		done
-		return 2
-	}
-
-	# shellcheck disable=SC2086
-	for i in $(printf '%s\n' $addresses | sort -u); do
-		# ipv4 address
-		check_addr4 "$i" && {
+parse_rule_ip_addr_entries() {
+	local entries="$1"
+	for i in $(unique_list "$entries"); do
+		check_addr_ipv4 "$i" && {
 			case "$i" in
-			"!"*) ipv4_negate="$ipv4_negate ${i#*!}" ;;
-			*) ipv4="$ipv4 $i" ;;
+			"!"*) ipv4_addr_negate="$ipv4_addr_negate ${i#*!}" ;;
+			*) ipv4_addr="$ipv4_addr $i" ;;
 			esac
 			continue
 		}
-
-		# ipv6 address
-		check_addr6 "$i" && {
+		check_addr_ipv6 "$i" && {
 			case "$i" in
-			"!"*) ipv6_negate="$ipv6_negate ${i#*!}" ;;
-			*) ipv6="$ipv6 $i" ;;
+			"!"*) ipv6_addr_negate="$ipv6_addr_negate ${i#*!}" ;;
+			*) ipv6_addr="$ipv6_addr $i" ;;
 			esac
 			continue
 		}
-
-		# ipv4 ipset
-		match_ipset "$i" "$sets_ipv4"
+		set_in_user_sets "$i" "$sets_ipv4"
 		case $? in
-		  0) ipset="${ipset:+$ipset }$i"; continue ;;
-		  1) ipset_negate="${ipset_negate:+$ipset_negate }${i#*!}"; continue ;;
+		  0) ipv4_set="${ipv4_set:+$ipv4_set }$i"; continue ;;
+		  1) ipv4_set_negate="${ipv4_set_negate:+$ipv4_set_negate }${i#*!}"; continue ;;
+		esac
+		set_in_user_sets "$i" "$sets_ipv6"
+		case $? in
+		  0) ipv6_set="${ipv6_set:+$ipv6_set }$i"; continue ;;
+		  1) ipv6_set_negate="${ipv6_set_negate:+$ipv6_set_negate }${i#*!}"; continue ;;
 		esac
 
-		#ipv6 ipset
-		match_ipset "$i" "$sets_ipv6"
-		case $? in
-		  0) ipset6="${ipset6:+$ipset6 }$i"; continue ;;
-		  1) ipset6_negate="${ipset_negate6:+$ipset_negate6 }${i#*!}"; continue ;;
-		esac
-
-		log warning "Invalid ip/ipset: $i"
+		log warning "Invalid ip addr/set: $i"
 		return 1
 	done
+	return 0
+}
+
+parse_rule_ether_addr_entries() {
+	local entries="$1"
+	for i in $(unique_list "$entries"); do
+		check_addr_ether "$i" && {
+			case "$i" in
+			"!"*) ether_addr_negate="$ether_addr_negate ${i#*!}" ;;
+			*) ether_addr="$ether_addr $i" ;;
+			esac
+			continue
+		}
+		set_in_user_sets "$i" "$sets_ether"
+		case $? in
+		  0) ether_set="${ether_set:+$ether_set }$i"; continue ;;
+		  1) ether_set_negate="${ether_set_negate:+$ether_set_negate }${i#*!}"; continue ;;
+		esac
+
+		log warning "Invalid mac addr/set: $i"
+		return 1
+	done
+	return 0
 }
 
 parse_set_timeout() {
@@ -487,45 +576,19 @@ parse_set_flags() {
 parse_set_type() {
 	[ -n "$type" ] && return 0
 
-	[ -n "$match" ] || {
-		type="${family}_addr"
-		return 0
+	[ -n "$match" ] && {
+		log warning "The match option is currently unsupported, instead use sets with the @<setname> syntax"
+		return 1
 	}
 
-	log warning "The match set option functionality is not yet fully implemented for user sets"
-
-	for i in $match; do
-		case "$i" in
-		src_* | dest_*) true ;;
-		*)
-			log warning "Set contains an invalid match option"
-			return 1
-			;;
-		esac
-
-		case "$i" in
-		*_ip) type="$type ${family}_addr" ;;
-		*_mac) type="$type ether_addr" ;;
-		*_port) type="$type inet_service" ;;
-		*_net)
-			type="$type ${family}_addr"
-			flag_interval=1
-			;;
-		*)
-			log warning "Set contains an invalid match option"
-			return 1
-			;;
-		esac
-	done
-	type=$(nft_type_list "$type")
-
+	type="$addr_type"
 	return 0
 }
 
 parse_set_loadfile() {
 	[ -n "$loadfile" ] || return 0
 	[ -f "$loadfile" ] || {
-		log warning "The ipset loadfile ${loadfile} can not be found"
+		log warning "The $CONFIG_SET loadfile ${loadfile} can not be found"
 		return 1
 	}
 
@@ -533,8 +596,8 @@ parse_set_loadfile() {
 		entry=$(echo "$entry" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 		[ -n "$entry" ] || continue
 
-		check_addr "$entry" "$family" || {
-			log warning "The ${family:+$family }loadfile address ${entry} is invalid"
+		check_addr "$entry" "$addr_type" || {
+			log warning "The ${addr_type:+$addr_type }loadfile address ${entry} is invalid"
 			continue
 		}
 		loadfile_entries="${loadfile_entries:+$loadfile_entries }$entry"
@@ -544,46 +607,72 @@ parse_set_loadfile() {
 
 # shellcheck disable=SC2016
 parse_set_entries() {
-	local entries="$1" _family="$family" _validated_entries
+	local entries="$1" _type="$addr_type" _validated_entries
 	for entry in $entries; do
-		local entry_family
-		if check_addr4 "$entry"; then
-			entry_family="ipv4"
-		elif check_addr6 "$entry"; then
-			entry_family="ipv6"
-		else
-			log warning "ipset ${name:+'$name' }contains an invalid entry: $entry"
-			continue
-		fi
+		local entry_type
 
-		if [ -z "$_family" ] || [ "$_family" = "$entry_family" ]; then
-			_family="$entry_family"
+		entry_type=$(get_addr_type "$entry")
+		[ -z "$entry_type" ] && {
+			log warning "$CONFIG_SET ${name:+'$name' }contains an invalid entry: $entry"
+			continue
+		}
+
+		if [ -z "$_type" ] || [ "$_type" = "$entry_type" ]; then
+			_type="$entry_type"
 			_validated_entries="${_validated_entries:+$_validated_entries }$entry"
 		elif [ -n "$family" ]; then
-			log warning "ipset ${name:+'$name' }with family ${family} can not contain entry: ${entry}"
+			log warning "$CONFIG_SET ${name:+'$name' }with family ${family} can not contain entry: ${entry}"
 		else
-			log warning "ipset ${name:+'$name' }contains multiple entry families ($_family, $entry_family)"
-			_family=""
+			log warning "$CONFIG_SET ${name:+'$name' }contains multiple entry families ($_type, $entry_type)"
+			_type=""
 			break
 		fi
 	done
-	[ -n "$_family" ] || {
-		log warning "Could not determine the family of ipset '${name}'"
+	[ -n "$_type" ] || {
+		log warning "Could not determine the type of $CONFIG_SET '${name}'"
 		return 1
 	}
 	if [ -z "$_validated_entries" ] && [ "$(echo "$entries" | wc -w)" != 0 ]; then
-		log info "ipset ${name:+'$name' }contains no valid entries"
+		log info "$CONFIG_SET ${name:+'$name' }contains no valid entries"
 		return 0
 	fi
-	family="$_family"
+	addr_type="$_type"
 	validated_entries="$_validated_entries"
+}
+
+compare_set_with_existing() {
+	local name="$1" type="$2" comment="$3" size="$4" flags="$5" timeout="$6"
+	local existing_set existing_type
+
+	existing_set=$(nft -t -j list set inet "$TABLE" "$name" 2>/dev/null) || return 2
+
+	type="$(echo "$type" | sed 's/\s\+\.\s\+/\n/g')"
+	existing_type="$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.type")"
+	if [ -n "$existing_type" ]; then
+		[ "$existing_type" = "$type" ] || return 1
+	else
+		existing_type="$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.type[*]")"
+		[ "$existing_type" = "$type" ] || return 1
+	fi
+
+	[ "$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.comment")" = "$comment" ] || return 1
+
+	[ "$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.size")" = "$size" ] || return 1
+
+	flags="$(echo "$flags" | sed 's/,\s\+/\n/g' | sort)"
+	[ "$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.flags[*]" | sort)" = "$flags" ] || return 1
+
+	timeout="$(convert_duration_to_seconds "$timeout")"
+	[ "$(jsonfilter -s "$existing_set" -e "@.nftables[*].set.timeout")" = "$timeout" ] || return 1
+
+	return 0
 }
 
 create_user_set() {
 	local section="$1"
 	local comment enabled family flags match size name timeout type loadfile
 	local flag_constant flag_interval flag_timeout auto_merge
-	local entries loadfile_entries validated_entries
+	local entries loadfile_entries validated_entries addr_type
 	local error=0
 
 	config_get_bool enabled "$section" enabled 1
@@ -592,10 +681,10 @@ create_user_set() {
 	config_get comment "$section" comment		# User defined comment
 	config_get name "$section" name				# Set name
 	config_get family "$section" family			# Either ipv4/ipv6
-	config_get match "$section" match			# Currently unused
+	config_get match "$section" match			# Unsupported
 	config_get size "$section" maxelem			# Maximum number of elements
 	config_get timeout "$section" timeout		# Timeout for elements
-	config_get loadfile "$section" loadfile		# Load file for ipset entries
+	config_get loadfile "$section" loadfile		# Load file for set entries
 	config_get entries "$section" entry			# Set entries
 
 	# Not exposed for regular fw4 ipsets
@@ -606,9 +695,12 @@ create_user_set() {
 	check_set_name "$name" || error=1
 	check_set_size "$size" || error=1
 
-	if [ -n "$family" ] && ! check_family "$family"; then
-		log warning "ipset ${name:+$name }contains an invalid family"
-		error=1
+	if [ -n "$family" ]; then
+		addr_type="${family}_addr"
+		! check_family "$family" && {
+			log warning "$CONFIG_SET ${name:+$name }contains an invalid family"
+			error=1
+		}
 	fi
 	parse_set_loadfile || error=1
 	parse_set_entries "$entries $loadfile_entries" || error=1
@@ -617,7 +709,7 @@ create_user_set() {
 	parse_set_flags || error=1
 	[ "$error" = 0 ] || return 1
 
-	check_set_against_existing "$name" "$type" "$comment" "$size" "$flags" "$timeout" || {
+	compare_set_with_existing "$name" "$type" "$comment" "$size" "$flags" "$timeout" || {
 		[ "$?" = 1 ] && post_include "destroy set inet $TABLE $name"
 		post_include "add set inet $TABLE $name { type $type; ${timeout:+timeout $timeout;} ${size:+size $size;} ${flags:+flags $flags;} ${auto_merge:+auto-merge;} ${comment:+comment \"$comment\";} }"
 	}
@@ -625,9 +717,10 @@ create_user_set() {
 	[ -n "$validated_entries" ] && post_include "add element inet $TABLE $name $(nft_element_list "$validated_entries")"
 
 	# Store set type for use in user rules
-	case $family in
-	"ipv4") sets_ipv4="${sets_ipv4:+$sets_ipv4 }$name" ;;
-	"ipv6") sets_ipv6="${sets_ipv6:+$sets_ipv6 }$name" ;;
+	case $addr_type in
+	"$ADDR_IPV4") sets_ipv4="${sets_ipv4:+$sets_ipv4 }$name" ;;
+	"$ADDR_IPV6") sets_ipv6="${sets_ipv6:+$sets_ipv6 }$name" ;;
+	"$ADDR_ETHER") sets_ether="${sets_ether:+$sets_ether }$name" ;;
 	esac
 
 	return 0
@@ -659,7 +752,7 @@ rule_zone() {
 
 	[ -n "$zone" ] || return 0
 
-	interfaces="$(fw_zone_interfaces "$zone")" || {
+	interfaces="$(get_zone_interfaces "$zone")" || {
 		log warning "Rule contains an invalid ${direction} zone"
 		return 1
 	}
@@ -690,7 +783,7 @@ rule_port() {
 	[ -n "$ports" ] || return 0
 
 	check_port_proto "$protocol" || {
-		log warning "Rules cannot combine a ${direction}_port with protocols other than 'tcp' or 'udp'"
+		log warning "Rules cannot combine a ${direction}_port with protocols other than 'tcp', 'udp' or 'udplite'"
 		return 1
 	}
 
@@ -708,60 +801,75 @@ rule_port() {
 
 # shellcheck disable=SC2016
 rule_addr() {
-	local direction="$1" addresses="$2" family="$3" xaddr
-	local ipv4 ipv4_negate ipset ipset_negate
-	local ipv6 ipv6_negate ipset6 ipset6_negate
-	local rule_list rule6_list negate negate6 
+	local direction="$1" addresses="$2" type="$3" family="$4"
+	local xaddr negate_ip negate_ip6 negate_ether rule_list rule6_list
+	local ether_addr ether_addr_negate ether_set ether_set_negate
+	local ipv4_addr ipv4_addr_negate ipv4_set ipv4_set_negate
+	local ipv6_addr ipv6_addr_negate ipv6_set ipv6_set_negate
 
+	# Determine address rule direction
 	case "$direction" in
 	src) xaddr="saddr" ;;
 	dest) xaddr="daddr" ;;
-	*)
-		log err "Invalid direction for addr function"
-		return 1
-		;;
+	*) log err "Invalid direction for addr rule"; return 1 ;;
 	esac
 
+	# Parse rule addresses and sets
 	[ -n "$addresses" ] || return 0
+	case "$type" in
+	ip) parse_rule_ip_addr_entries "$addresses" || {
+			log warning "Rule ${name:+'$name' }contains an invalid ${direction}_ip"
+			return 1
+		} ;;
+	ether) parse_rule_ether_addr_entries "$addresses" || {
+			log warning "Rule ${name:+'$name' }contains an invalid ${direction}_mac"
+			return 1
+		} ;;
+	*) log err "Invalid type for addr rule"; return 1 ;;
+	esac
 
-	if [ -n "$family" ] && ! check_family "$family"; then
-		log warning "Rule ${name:+'$name' }contains an invalid family"
+	# Check for family conflicts
+	if [ "$family" = "$FAMILY_IPV6" ] && [ -n "$ipv4_addr$ipv4_addr_negate$ipv4_set$ipv4_set_negate" ]; then
+		log warning "Rules cannot combine an $FAMILY_IPV4 ${direction}_ip with the '$FAMILY_IPV6' family option${name:+, rule: '$name'}"
 		return 1
 	fi
-	parse_rule_ips "$addresses" || {
-		log warning "Rule ${name:+'$name' }contains an invalid ${direction}_ip"
-		return 1
-	}
-	if [ -n "$ipv4$ipv4_negate$ipset$ipset_negate" ] && [ "$family" = "ipv6" ]; then
-		log warning "Rules cannot combine an ipv4 ${direction}_ip with the 'ipv6' family option${name:+, rule: '$name'}"
-		return 1
-	fi
-	if [ -n "$ipv6$ipv6_negate$ipset6$ipset6_negate" ] && [ "$family" = "ipv4" ]; then
-		log warning "Rules cannot combine an ipv6 ${direction}_ip with the 'ipv4' family option${name:+, rule: '$name'}"
+	if [ "$family" = "$FAMILY_IPV4" ] && [ -n "$ipv6_addr$ipv6_addr_negate$ipv6_set$ipv6_set_negate" ]; then
+		log warning "Rules cannot combine an $FAMILY_IPV6 ${direction}_ip with the '$FAMILY_IPV4' family option${name:+, rule: '$name'}"
 		return 1
 	fi
 
-	# Address negate
-	[ -n "$ipv4_negate" ] && negate="ip $xaddr != $(nft_element_list "$ipv4_negate")"
-	[ -n "$ipv6_negate" ] && negate6="ip6 $xaddr != $(nft_element_list "$ipv6_negate")"
+	# Load in existing directional rules for each ip family
+	eval "rule_list=\$${xaddr}_list"
+	eval "rule6_list=\$${xaddr}6_list"
 
-	# Set negate
-	for ipset in $ipset_negate; do
-		negate="${negate:+$negate }ip $xaddr != $ipset"
+	# Create negate for addresses and sets of the same type
+	[ -n "$ipv4_addr_negate" ] && ipv4_addr_negate="$(nft_element_list "$ipv4_addr_negate")"
+	for entry in $ipv4_set_negate ${ipv4_addr_negate:+"$ipv4_addr_negate"}; do
+		negate_ip="ip $xaddr != $entry $negate_ip"
 	done
-	for ipset in $ipset6_negate; do
-		negate6="${negate6:+$negate6 }ip6 $xaddr != $ipset"
+	[ -n "$ipv6_addr_negate" ] && ipv6_addr_negate="$(nft_element_list "$ipv6_addr_negate")"
+	for entry in $ipv6_set_negate ${ipv6_addr_negate:+"$ipv6_addr_negate"}; do
+		negate_ip6="ip6 $xaddr != $entry $negate_ip6"
+	done
+	[ -n "$ether_addr_negate" ] && ether_addr_negate="$(nft_element_list "$ether_addr_negate")"
+	for entry in $ether_set_negate ${ether_addr_negate:+"$ether_addr_negate"}; do
+		negate_ether="ether $xaddr != $entry $negate_ether"
 	done
 
-	# Create an address rule per allowed IP/set
-	for ipset in $ipset; do
-		rule_list=${rule_list:+${rule_list}$'\n'}"ip $xaddr $ipset${negate:+ $negate}"
+	# Create an address rule per allowed address/set
+	[ -n "$ipv4_addr" ] && ipv4_addr="$(nft_element_list "$ipv4_addr")"
+	for entry in $ipv4_set ${ipv4_addr:+"$ipv4_addr"}; do
+		rule_list=${rule_list:+${rule_list}$'\n'}"ip $xaddr $entry $negate_ip $negate_ether"
 	done
-	for ipset in $ipset6; do
-		rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip6 $xaddr $ipset${negate6:+ $negate6}"
+	[ -n "$ipv6_addr" ] && ipv6_addr="$(nft_element_list "$ipv6_addr")"
+	for entry in $ipv6_set ${ipv6_addr:+"$ipv6_addr"}; do
+		rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip6 $xaddr $entry $negate_ip6 $negate_ether"
 	done
-	[ -n "$ipv4" ] && rule_list=${rule_list:+${rule_list}$'\n'}"ip $xaddr $(nft_element_list "$ipv4")${negate:+ $negate}"
-	[ -n "$ipv6" ] && rule6_list=${rule6_list:+${rule6_list}$'\n'}"ip6 $xaddr $(nft_element_list "$ipv6")${negate6:+ $negate6}"
+	[ -n "$ether_addr" ] && ether_addr="$(nft_element_list "$ether_addr")"
+	for entry in $ether_set ${ether_addr:+"$ether_addr"}; do
+		[ "$family" != "$FAMILY_IPV6" ] && rule_list=${rule_list:+${rule_list}$'\n'}"ether $xaddr $entry $negate_ip $negate_ether"
+		[ "$family" != "$FAMILY_IPV4" ] && rule6_list=${rule6_list:+${rule6_list}$'\n'}"ether $xaddr $entry $negate_ip6 $negate_ether"
+	done
 
 	eval "$xaddr"_list='$rule_list'
 	eval "$xaddr"6_list='$rule6_list'
@@ -794,17 +902,18 @@ rule_verdict() {
 		log warning "Rule is missing the DSCP 'class' option"
 		return 1
 	}
-	class="$(dscp_class "$class")" || {
+	class="$(parse_dscp_class "$class")" || {
 		log warning "Rule option 'class' contains an invalid DSCP value"
 		return 1
 	}
 	verdict="goto ct_set_${class}"
 }
 
+# shellcheck disable=SC2016
 create_user_rule() {
 	local section="$1"
-	local enabled family proto direction device dest dest_ip dest_port src src_ip src_port counter class name
-	local nfproto l4proto iifname sport oifname dport verdict
+	local enabled family proto direction device dest dest_ip dest_port dest_mac src src_ip src_port src_mac counter class name
+	local nfproto l4proto iifname smac sport oifname dmac dport verdict
 	local saddr_list saddr6_list daddr_list daddr6_list
 	local error=0
 
@@ -818,22 +927,30 @@ create_user_rule() {
 	config_get dest "$section" dest
 	config_get dest_ip "$section" dest_ip
 	config_get dest_port "$section" dest_port
+	config_get dest_mac "$section" dest_mac
 	config_get src "$section" src
 	config_get src_ip "$section" src_ip
 	config_get src_port "$section" src_port
+	config_get src_mac "$section" src_mac
 	config_get_bool counter "$section" counter
 	config_get class "$section" class
 	config_get name "$section" name
 
 	[ "$family" = "any" ] && family=""
+	if [ -n "$family" ] && ! check_family "$family"; then
+		log warning "Rule ${name:+'$name' }contains an invalid family"
+		return 1
+	fi
 
 	rule_nfproto "$family" || error=1
 	rule_l4proto "$proto" || error=1
 	rule_zone dest "$dest" || error=1
-	rule_addr dest "$dest_ip" "$family" || error=1
+	rule_addr dest "$dest_mac" ether "$family" || error=1
+	rule_addr dest "$dest_ip" ip "$family" || error=1
 	rule_port dest "$dest_port" "$proto" || error=1
 	rule_zone src "$src" || error=1
-	rule_addr src "$src_ip" "$family" || error=1
+	rule_addr src "$src_mac" ether "$family" || error=1
+	rule_addr src "$src_ip" ip "$family" || error=1
 	rule_port src "$src_port" "$proto" || error=1
 	rule_device "$device" "$direction" || error=1
 	rule_verdict "$class" || error=1
@@ -846,7 +963,7 @@ create_user_rule() {
 	}
 
 	# Create rules for each saddr and daddr combination
-	for_each_saddr_daddr() {
+	for_each_ip_saddr_daddr() {
 		local saddr_list="$1" daddr_list="$2"
 		[ -n "$saddr_list$daddr_list" ] || return 0
 		printf '%s\n' "${saddr_list:-}" | while IFS= read -r saddr || [ -n "$saddr" ]; do
@@ -856,8 +973,8 @@ create_user_rule() {
 			done
 		done
 	}
-	for_each_saddr_daddr "$saddr_list" "$daddr_list"
-	for_each_saddr_daddr "$saddr6_list" "$daddr6_list"
+	for_each_ip_saddr_daddr "$saddr_list" "$daddr_list"
+	for_each_ip_saddr_daddr "$saddr6_list" "$daddr6_list"
 
 	return 0
 }
@@ -868,8 +985,9 @@ destroy_client_class_adoption_rules() {
 
 create_client_class_adoption_rules() {
 	local enabled=1
+	local exclude_class_always="cs0"
 	local exclude_class_defaults="cs6 cs7"
-	local exclude_class src_ip family
+	local exclude_class src_ip src_mac
 	local saddr_list saddr6_list
 
 	config_get_bool enabled "$client_class_adoption_config" enabled "$enabled"
@@ -878,45 +996,49 @@ create_client_class_adoption_rules() {
 		return 0
 	}
 
+	# Check excluded classes
 	config_get exclude_class "$client_class_adoption_config" exclude_class "$exclude_class_defaults"
 	for class in $exclude_class; do
-		class="$(dscp_class "$class")" || {
+		class="$(parse_dscp_class_for_var "$class")" || {
 			log err "The client_class_adoption config option 'exclude_class' contains an invalid DSCP class"
 			return 1
 		}
-		case "$class" in
-		le) class=lephb ;;  # RFC-8622
-		cs0) continue ;;
-		esac
-		exclude_class="${exclude_class:+$exclude_class }\$${class}"
+		exclude_class="${exclude_class:+$exclude_class }\$$class"
 	done
+	exclude_class=$(unique_list "$exclude_class_always $exclude_class")
 
-	# Create exluded classes list, cs0 is always excluded
-	exclude_class="$(nft_element_list "cs0 $exclude_class")"
-
-	config_get src_ip "$section" src_ip
-	rule_addr src "$src_ip" || {
-		log err "The client_class_adoption config is invalid"
+	# Create src addr rules
+	config_get src_ip "$client_class_adoption_config" src_ip
+	config_get src_mac "$client_class_adoption_config" src_mac
+	rule_addr src "$src_ip" ip || {
+		log err "The client_class_adoption src_ip config is invalid"
+		return 1
+	}
+	rule_addr src "$src_mac" ether || {
+		log err "The client_class_adoption src_mac config is invalid"
 		return 1
 	}
 
 	# Create client class adoption rules
-	[ -z "$saddr_list" ] && {
+	exclude_class="$(nft_element_list "$exclude_class")"
+	if [ -z "$saddr_list" ]; then
 		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY ip dscp != $exclude_class ip dscp vmap @dscp_ct"
-	}
-	[ -z "$saddr6_list" ] && {
+	else
+		for saddr in $saddr_list; do
+			post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr ip dscp != $exclude_class ip dscp vmap @dscp_ct"
+		done
+	fi
+	if [ -z "$saddr6_list" ]; then
 		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
-	}
-	for saddr in $saddr_list; do
-		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr ip dscp != $exclude_class ip dscp vmap @dscp_ct"
-	done
-	for saddr6 in $saddr6_list; do
-		post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr6 ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
-	done
+	else
+		for saddr6 in $saddr6_list; do
+			post_include "add rule inet $TABLE $CHAIN_CLIENT_CLASSIFY $saddr6 ip6 dscp != $exclude_class ip6 dscp vmap @dscp_ct"
+		done
+	fi
 
 	# Create jump from input and postrouting chains
-	post_include "add rule inet $TABLE input ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump $CHAIN_CLIENT_CLASSIFY"
-	post_include "add rule inet $TABLE postrouting ct mark & \$ct_dynamic != 0 ct direction original iifname != \$wan jump $CHAIN_CLIENT_CLASSIFY"
+	post_include "add rule inet $TABLE input ct mark & \$$NFT_VAR_CT_DYNAMIC != 0 ct direction original iifname != \$wan jump $CHAIN_CLIENT_CLASSIFY"
+	post_include "add rule inet $TABLE postrouting ct mark & \$$NFT_VAR_CT_DYNAMIC != 0 ct direction original iifname != \$wan jump $CHAIN_CLIENT_CLASSIFY"
 }
 
 destroy_dynamic_classify_rules() {
@@ -936,8 +1058,8 @@ create_dynamic_classify_rules() {
 		return 0
 	fi
 
-	post_include "add rule inet $TABLE input ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump $CHAIN_DYNAMIC_CLASSIFY"
-	post_include "add rule inet $TABLE postrouting ct mark & (\$ct_dynamic | \$ct_dscp) == \$ct_dynamic jump $CHAIN_DYNAMIC_CLASSIFY"
+	post_include "add rule inet $TABLE input ct mark & (\$$NFT_VAR_CT_DYNAMIC | \$$NFT_VAR_CT_DSCP) == \$$NFT_VAR_CT_DYNAMIC jump $CHAIN_DYNAMIC_CLASSIFY"
+	post_include "add rule inet $TABLE postrouting ct mark & (\$$NFT_VAR_CT_DYNAMIC | \$$NFT_VAR_CT_DSCP) == \$$NFT_VAR_CT_DYNAMIC jump $CHAIN_DYNAMIC_CLASSIFY"
 }
 
 destroy_bulk_client_rules() {
@@ -945,7 +1067,7 @@ destroy_bulk_client_rules() {
 	post_include "destroy chain inet $TABLE $CHAIN_BULK_CLIENT_REPLY"
 
 	post_include "destroy set inet $TABLE bulk_clients"
-	post_include "destroy set inet $TABLE bulk_clients6"
+	post_include "destroy set inet $TABLE $SET_BULK_CLIENTS6"
 }
 
 create_bulk_client_rules() {
@@ -971,51 +1093,47 @@ create_bulk_client_rules() {
 		return 1
 	fi
 	config_get class "$bulk_client_detection_config" class "$class"
-	class="$(dscp_class "$class")" || {
+	class="$(parse_dscp_class_for_var "$class")" || {
 		log err "bulk_client_detection config option 'class' contains an invalid DSCP class"
 		return 1
 	}
-
-	case "$class" in
-	le) class=lephb ;;  # RFC-8622
-	cs0)
-		destroy_bulk_client_rules
+	[ "$class" = "cs0" ] && {
 		log warning "Disabling threaded client detection as its configured class CS0/DF/BE is the default packet class"
+		destroy_bulk_client_rules
 		return 0
-		;;
-	esac
+	}
 
 	# Create sets for matching threaded clients
-	check_set_exists bulk_clients || post_include "add set inet $TABLE bulk_clients { type ipv4_addr . inet_service . inet_proto; flags timeout; }"
-	check_set_exists bulk_clients6 || post_include "add set inet $TABLE bulk_clients6 { type ipv6_addr . inet_service . inet_proto; flags timeout; }"
+	nft_set_exists "$TABLE" "$SET_BULK_CLIENTS" || post_include "add set inet $TABLE $SET_BULK_CLIENTS { type ipv4_addr . inet_service . inet_proto; flags timeout; }"
+	nft_set_exists "$TABLE" "$SET_BULK_CLIENTS6" || post_include "add set inet $TABLE $SET_BULK_CLIENTS6 { type ipv6_addr . inet_service . inet_proto; flags timeout; }"
 
 	# Create threaded client detection rules
-	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter bulk_client_detect { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients { ip daddr . th dport . meta l4proto timeout 30s }"
-	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter bulk_client_detect6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter $METER_BULK_CLIENT_DETECT { ip daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @$SET_BULK_CLIENTS { ip daddr . th dport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter $METER_BULK_CLIENT_DETECT6 { ip6 daddr . th dport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @$SET_BULK_CLIENTS6 { ip6 daddr . th dport . meta l4proto timeout 30s }"
 
 	# Create threaded client classification rule chains
 	post_include "add chain inet $TABLE $CHAIN_BULK_CLIENT"
-	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT meter bulk_client_orig_classify { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
-	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT meter bulk_client_orig_classify6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT meter $METER_BULK_CLIENT_ORIG_CLASSIFY { ip saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @$SET_BULK_CLIENTS { ip saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT meter $METER_BULK_CLIENT_ORIG_CLASSIFY6 { ip6 saddr . th sport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @$SET_BULK_CLIENTS6 { ip6 saddr . th sport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
 
 	post_include "add chain inet $TABLE $CHAIN_BULK_CLIENT_REPLY"
-	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT_REPLY meter bulk_client_reply_classify { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients { ip daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
-	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT_REPLY meter bulk_client_reply_classify6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @bulk_clients6 { ip6 daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT_REPLY meter $METER_BULK_CLIENT_REPLY_CLASSIFY { ip daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @$SET_BULK_CLIENTS { ip daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
+	post_include "add rule inet $TABLE $CHAIN_BULK_CLIENT_REPLY meter $METER_BULK_CLIENT_REPLY_CLASSIFY6 { ip6 daddr . th dport . meta l4proto timeout 5m limit rate over $((min_bytes - 1)) bytes/hour } update @$SET_BULK_CLIENTS6 { ip6 daddr . th dport . meta l4proto timeout 5m } ct mark set ct mark | \$${class} return"
 
 	# Create jumps from dynamic classify chains
-	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip saddr . th sport . meta l4proto @bulk_clients goto $CHAIN_BULK_CLIENT"
-	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip6 saddr . th sport . meta l4proto @bulk_clients6 goto $CHAIN_BULK_CLIENT"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip saddr . th sport . meta l4proto @$SET_BULK_CLIENTS goto $CHAIN_BULK_CLIENT"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip6 saddr . th sport . meta l4proto @$SET_BULK_CLIENTS6 goto $CHAIN_BULK_CLIENT"
 
-	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip daddr . th dport . meta l4proto @bulk_clients goto $CHAIN_BULK_CLIENT_REPLY"
-	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip6 daddr . th dport . meta l4proto @bulk_clients6 goto $CHAIN_BULK_CLIENT_REPLY"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip daddr . th dport . meta l4proto @$SET_BULK_CLIENTS goto $CHAIN_BULK_CLIENT_REPLY"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip6 daddr . th dport . meta l4proto @$SET_BULK_CLIENTS6 goto $CHAIN_BULK_CLIENT_REPLY"
 }
 
 destroy_high_throughput_service_rules() {
 	post_include "destroy chain inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE"
 	post_include "destroy chain inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
 
-	post_include "destroy set inet $TABLE high_throughput_services"
-	post_include "destroy set inet $TABLE high_throughput_services6"
+	post_include "destroy set inet $TABLE $SET_HIGH_THROUGHPUT_SERVICES"
+	post_include "destroy set inet $TABLE $SET_HIGH_THROUGHPUT_SERVICES6"
 }
 
 create_high_throughput_service_rules() {
@@ -1041,56 +1159,52 @@ create_high_throughput_service_rules() {
 		return 1
 	fi
 	config_get class "$high_throughput_service_detection_config" class "$class"
-	class="$(dscp_class "$class")" || {
+	class="$(parse_dscp_class_for_var "$class")" || {
 		log err "high_throughput_service_detection config option 'class' contains an invalid DSCP class"
 		return 1
 	}
-
-	case "$class" in
-	le) class=lephb ;;  # RFC-8622
-	cs0)
-		destroy_high_throughput_service_rules
+	[ "$class" = "cs0" ] && {
 		log warning "Disabling threaded service detection as its configured class CS0/DF/BE is the default packet class"
+		destroy_high_throughput_service_rules
 		return 0
-		;;
-	esac
+	}
 
 	# Create sets for matching threaded services
-	check_set_exists high_throughput_services || post_include "add set inet $TABLE high_throughput_services { type ipv4_addr . ipv4_addr . inet_service . inet_proto; flags timeout; }"
-	check_set_exists high_throughput_services6 || post_include "add set inet $TABLE high_throughput_services6 { type ipv6_addr . ipv6_addr . inet_service . inet_proto; flags timeout; }"
+	nft_set_exists "$TABLE" "$SET_HIGH_THROUGHPUT_SERVICES" || post_include "add set inet $TABLE $SET_HIGH_THROUGHPUT_SERVICES { type ipv4_addr . ipv4_addr . inet_service . inet_proto; flags timeout; }"
+	nft_set_exists "$TABLE" "$SET_HIGH_THROUGHPUT_SERVICES6" || post_include "add set inet $TABLE $SET_HIGH_THROUGHPUT_SERVICES6 { type ipv6_addr . ipv6_addr . inet_service . inet_proto; flags timeout; }"
 
 	# Create threaded service detection rules
-	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter high_throughput_service_detect { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
-	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter high_throughput_service_detect6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter $METER_HIGH_THROUGHPUT_SERVICE_DETECT { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @$SET_HIGH_THROUGHPUT_SERVICES { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 30s }"
+	post_include "add rule inet $TABLE $CHAIN_ESTABLISHED_CONNECTION meter $METER_HIGH_THROUGHPUT_SERVICE_DETECT6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5s limit rate over $((min_connections - 1))/minute } add @$SET_HIGH_THROUGHPUT_SERVICES6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 30s }"
 
 	# Create threaded service classification rule chains
 	post_include "add chain inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE"
 	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE ct original bytes < $min_bytes return"
-	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE update @high_throughput_services { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"
-	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE update @high_throughput_services6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE update @$SET_HIGH_THROUGHPUT_SERVICES { ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE update @$SET_HIGH_THROUGHPUT_SERVICES6 { ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto timeout 5m }"
 	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE ct mark set ct mark | \$${class} return"
 
 	post_include "add chain inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
 	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY ct reply bytes < $min_bytes return"
-	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY update @high_throughput_services { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }"
-	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY update @high_throughput_services6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY update @$SET_HIGH_THROUGHPUT_SERVICES { ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto timeout 5m }"
+	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY update @$SET_HIGH_THROUGHPUT_SERVICES6 { ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto timeout 5m }"
 	post_include "add rule inet $TABLE $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY ct mark set ct mark | \$${class} return"
 
 	# Create jumps from dynamic classify chains
-	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto @high_throughput_services goto $CHAIN_HIGH_THROUGHPUT_SERVICE"
-	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto @high_throughput_services6 goto $CHAIN_HIGH_THROUGHPUT_SERVICE"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip saddr . ip daddr and 255.255.255.0 . th dport . meta l4proto @$SET_HIGH_THROUGHPUT_SERVICES goto $CHAIN_HIGH_THROUGHPUT_SERVICE"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY ip6 saddr . ip6 daddr and ffff:ffff:ffff:: . th dport . meta l4proto @$SET_HIGH_THROUGHPUT_SERVICES6 goto $CHAIN_HIGH_THROUGHPUT_SERVICE"
 
-	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto @high_throughput_services goto $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
-	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto @high_throughput_services6 goto $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip daddr . ip saddr and 255.255.255.0 . th sport . meta l4proto @$SET_HIGH_THROUGHPUT_SERVICES goto $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
+	post_include "add rule inet $TABLE $CHAIN_DYNAMIC_CLASSIFY_REPLY ip6 daddr . ip6 saddr and ffff:ffff:ffff:: . th sport . meta l4proto @$SET_HIGH_THROUGHPUT_SERVICES6 goto $CHAIN_HIGH_THROUGHPUT_SERVICE_REPLY"
 }
 
 create_dscp_mark_rule() {
 	local wmm_mark_lan=1
 
 	config_get_bool wmm_mark_lan "$service_config" wmm_mark_lan "$wmm_mark_lan"
-	[ "$wmm_mark_lan" = 1 ] && post_include "add rule inet $TABLE postrouting oifname \$lan ct mark & \$ct_dscp vmap @ct_wmm"
+	[ "$wmm_mark_lan" = 1 ] && post_include "add rule inet $TABLE postrouting oifname \$lan ct mark & \$$NFT_VAR_CT_DSCP vmap @ct_wmm"
 	
-	post_include "add rule inet $TABLE postrouting ct mark & \$ct_dscp vmap @ct_dscp"
+	post_include "add rule inet $TABLE postrouting ct mark & \$$NFT_VAR_CT_DSCP vmap @ct_dscp"
 }
 
 create_flush_actions() {
@@ -1101,14 +1215,14 @@ create_flush_actions() {
 		pre_include "flush map inet $TABLE ${map}"
 	done
 
-	pre_include "destroy set inet $TABLE bulk_client_detect"
-	pre_include "destroy set inet $TABLE bulk_client_detect6"
-	pre_include "destroy set inet $TABLE bulk_client_orig_classify"
-	pre_include "destroy set inet $TABLE bulk_client_orig_classify6"
-	pre_include "destroy set inet $TABLE bulk_client_reply_classify"
-	pre_include "destroy set inet $TABLE bulk_client_reply_classify6"
-	pre_include "destroy set inet $TABLE high_throughput_service_detect"
-	pre_include "destroy set inet $TABLE high_throughput_service_detect6"
+	pre_include "destroy set inet $TABLE $METER_BULK_CLIENT_DETECT"
+	pre_include "destroy set inet $TABLE $METER_BULK_CLIENT_DETECT6"
+	pre_include "destroy set inet $TABLE $METER_BULK_CLIENT_ORIG_CLASSIFY"
+	pre_include "destroy set inet $TABLE $METER_BULK_CLIENT_ORIG_CLASSIFY6"
+	pre_include "destroy set inet $TABLE $METER_BULK_CLIENT_REPLY_CLASSIFY"
+	pre_include "destroy set inet $TABLE $METER_BULK_CLIENT_REPLY_CLASSIFY6"
+	pre_include "destroy set inet $TABLE $METER_HIGH_THROUGHPUT_SERVICE_DETECT"
+	pre_include "destroy set inet $TABLE $METER_HIGH_THROUGHPUT_SERVICE_DETECT6"
 }
 
 create_pre_include() {
@@ -1128,8 +1242,8 @@ create_post_include() {
 	rm -f "$POST_INCLUDE"
 
 	local sets_ipv4 sets_ipv6
-	config_foreach create_user_set ipset
-	config_foreach_reverse create_user_rule rule
+	config_foreach create_user_set "$CONFIG_SET"
+	config_foreach_reverse create_user_rule "$CONFIG_RULE"
 
 	create_client_class_adoption_rules || return 1
 	create_dynamic_classify_rules || return 1
@@ -1145,36 +1259,93 @@ get_zones() {
 	config_get lan "$service_config" lan_device # L3 physical interface
 	config_get lan_zones "$service_config" lan_zone "lan"
 	for zone in $lan_zones; do
-		interfaces="$(fw_zone_interfaces "$zone")" && lan="${lan:+$lan }${interfaces}"
+		interfaces="$(get_zone_interfaces "$zone")" && lan="${lan:+$lan }${interfaces}"
 	done
 	[ -n "$lan" ] || return 1
 
 	config_get wan "$service_config" wan_device # L3 physical interface
 	config_get wan_zones "$service_config" wan_zone "wan"
 	for zone in $wan_zones; do
-		interfaces="$(fw_zone_interfaces "$zone")" && wan="${wan:+$wan }${interfaces}"
+		interfaces="$(get_zone_interfaces "$zone")" && wan="${wan:+$wan }${interfaces}"
 	done
 	[ -n "$wan" ] || return 1
 }
 
 migrate_config() {
-	local changed=0
+	local changed=0 error=0
 
-	# Ensure a section exists, create it if missing
+	# Ensure a section of the given type exists
 	ensure_section_exists() {
 		local type="$1"
-		uci get "$CONFIG.@${type}[0]" &>/dev/null || {
-			uci add $CONFIG "$type" >/dev/null
+		uci -q get "$CONFIG.@${type}[0]" >/dev/null || {
+			uci add "$CONFIG" "$type" || return 1
 			changed=1
 		}
+	}
+
+	# Get the count of sections of a given type
+	get_section_count() {
+		local type="$1"
+		uci show "$CONFIG" | grep -c "@${type}\[[0-9]*\]="
+	}
+
+	# Get all section IDs of a given type
+	get_section_ids() {
+		local type="$1" id section_ids
+		for section in $(uci show "$CONFIG" | grep "@${type}\[[0-9]*\]=" | cut -d'=' -f1); do
+			id=$(uci show "$section" | head -n1 | cut -d'=' -f1 | cut -d'.' -f2) || continue
+			section_ids="${section_ids:+$section_ids }$id"
+		done
+		[ -n "$section_ids" ] || return 1
+		echo "$section_ids"
+	}
+
+	# Get all options of a given section
+	get_section_options() {
+		local section="$1" options
+		options=$(uci show "$section" | grep "^$section\." | cut -d'=' -f1 | cut -d'.' -f3-)
+		[ -n "$options" ] || return 1
+		echo "$options"
+	}
+
+	# Get an option's values, returns list items on separate lines
+	get_option_values() {
+		local option="$1" values
+		values=$(uci -d $'\n' get "$option") || return 1
+		echo "$values" | sed -e "s/^'\s*//" -e "s/\s*'$//"
+	}
+
+	# Add an option to a section by ID, multiple line values are added as list items
+	set_option_values() {
+		local option="$1" values="$2"
+		[ -n "$values" ] || return 1
+		if [ "$(echo "$values" | wc -l)" -gt 1 ]; then
+			echo "$values" | while IFS= read -r value; do
+				[ -n "$value" ] && uci add_list "$option=$value" || return 1
+			done
+		else
+			uci set "$option=$values" || return 1
+		fi
+		changed=1
+		return 0
 	}
 
 	# Move an option from one section to another
 	move_unique_section_option() {
 		local from_type="$1" from_opt="$2" to_type="$3" to_opt="$4"
-		value=$(uci get "$CONFIG.@${from_type}[0].${from_opt}" 2>/dev/null) || return 1
-		ensure_section_exists "$to_type"
-		uci set "$CONFIG.@${to_type}[0].${to_opt}=${value}"
+		local values
+		[ "$(get_section_count "$from_type")" -gt 1 ] || {
+			log err "Cannot move option '$from_opt' from '$from_type' to '$to_type' because multiple '$from_type' sections exist"
+			error=1
+			return 1
+		}
+		values=$(get_option_values "$CONFIG.@${from_type}[0].$from_opt") || return 0
+		ensure_section_exists "$to_type" >/dev/null
+		set_option_values "$CONFIG.@${to_type}[0].$to_opt" "$values" || {
+			log err "Failed to move option '$from_opt' from '$from_type' to '$to_type'"
+			error=1
+			return 1
+		}
 		uci delete "$CONFIG.@${from_type}[0].${from_opt}"
 		changed=1
 		return 0
@@ -1183,32 +1354,55 @@ migrate_config() {
 	# Rename a section type
 	rename_section_type() {
 		local from_type="$1" to_type="$2"
-		for idx in $(uci show "$CONFIG" | grep "=${from_type}$" | cut -d'[' -f2 | cut -d']' -f1); do
-				uci rename "$CONFIG.@${from_type}[$idx]=${to_type}"
-				changed=1
-		done
-	}
+		local section_ids options new_id values
 
-	# Rename an option
-	rename_section_option() {
-		local type="$1" old_opt="$2" new_opt="$3"
-		local idx value
-		for idx in $(uci show "$CONFIG" | grep "^$CONFIG.@${type}\[" | cut -d'[' -f2 | cut -d']' -f1); do
-			value=$(uci get "$CONFIG.@${type}[$idx].${old_opt}" 2>/dev/null) || continue
-			uci set "$CONFIG.@${type}[$idx].${new_opt}=${value}"
-			uci delete "$CONFIG.@${type}[$idx].${old_opt}"
+		section_ids="$(get_section_ids "$from_type")" || return 0
+		for id in $section_ids; do
+			options=$(get_section_options "$CONFIG.$id") || {
+				uci delete "$CONFIG.$id"
+				changed=1
+				continue
+			}
+			new_id=$(uci add "$CONFIG" "$to_type")
+			for option in $options; do
+				values=$(get_option_values "$CONFIG.$id.$option") || continue
+				set_option_values "$CONFIG.$new_id.$option" "$values" || {
+					log err "Failed to rename section '$id' from type '$from_type' to '$to_type'"
+					error=1
+					return 1
+				}
+			done
+			uci delete "$CONFIG.$id"
 			changed=1
 		done
+		return 0
+	}
+
+	# Rename all instances of an option
+	rename_section_option() {
+		local type="$1" old_opt="$2" new_opt="$3"
+		local values section
+		for option in $(uci show "$CONFIG" | grep "@${type}\[[0-9]*\]\.${old_opt}" | cut -d'=' -f1); do
+			values=$(get_option_values "$option") || continue
+			section=${option%.*}
+			set_option_values "$section.$new_opt" "$values" || {
+				log err "Failed to rename option '$old_opt' to '$new_opt' in section '$section'"
+				error=1
+				return 1
+			}
+			uci delete "$option"
+			changed=1
+		done
+		return 0
 	}
 
 	# Migrate global options to new section types
-	if uci get "$CONFIG.@global[0]" &>/dev/null; then
+	if [ "$(get_section_count global)" -gt 0 ]; then
 		# Options for the 'service' section
 		move_unique_section_option global lan_device service lan_device
 		move_unique_section_option global lan_zone service lan_zone
 		move_unique_section_option global wan_device service wan_device
 		move_unique_section_option global wan_zone service wan_zone
-		move_unique_section_option global debug service debug
 		move_unique_section_option global class_bulk service class_low_effort
 		move_unique_section_option global class_low_effort service class_low_effort
 		move_unique_section_option global class_high_throughput service class_high_throughput
@@ -1227,15 +1421,21 @@ migrate_config() {
 		move_unique_section_option global threaded_service_min_bytes high_throughput_service_detection min_bytes
 		move_unique_section_option global threaded_service_min_connections high_throughput_service_detection min_connections
 
-		uci delete "$CONFIG.@global[0]"
-		changed=1
+		# Delete the 'global' section
+		uci delete "$CONFIG.@global[0]" && changed=1
 	fi
 
-	# Rename all 'set' type sections to 'ipset'
-	rename_section_type set ipset
+	# Rename all 'ipset' type sections to 'set'
+	rename_section_type ipset set
 
-	# Rename all instances of 'entity' in 'ipset' sections
-	rename_section_option ipset element entry
+	# Rename all instances of 'element' in 'set' sections
+	rename_section_option set element entry
+
+	[ "$error" = 1 ] && {
+		log err "Failed to migrate service config, please check the config file"
+		uci revert "$CONFIG"
+		return 1
+	}
 
 	[ "$changed" = 1 ] && {
 		uci commit "$CONFIG"
@@ -1250,22 +1450,13 @@ setup() {
 	local client_class_adoption_config
 	local bulk_client_detection_config
 	local high_throughput_service_detection_config
+	local compat_dscp_le compat_nft_destroy
+	local class_low_effort class_high_throughput
 
-	local class_low_effort="le"
-	local class_high_throughput="af13"
-	local destroy_action
-
-	check_minimum_kernel_release 5.13 || {
-		log info "Falling back to CS1 for default Low Effort class due to Kernel version < 5.13"
-		class_low_effort="cs1"
+	determine_compatibility || {
+		log err "Failed to determine system compatibility"
+		return 1
 	}
-	if check_minimum_kernel_release 6.3; then
-		destroy_action="destroy"
-	else
-		log info "Falling back to nft delete due to Kernel version < 6.3"
-		destroy_action="delete"
-	fi
-
 	cleanup_setup
 	migrate_config
 	config_load "$CONFIG" || {
@@ -1278,9 +1469,13 @@ setup() {
 	config_get_exclusive_section bulk_client_detection_config bulk_client_detection
 	config_get_exclusive_section high_throughput_service_detection_config high_throughput_service_detection
 
-	config_get_bool debug "$service_config" debug "$DEBUG"
-	config_get class_low_effort "$service_config" class_low_effort "$class_low_effort"
-	config_get class_high_throughput  "$service_config" class_high_throughput "$class_high_throughput"
+	config_get class_low_effort "$service_config" class_low_effort "$DEFAULT_CLASS_LOW_EFFORT"
+	config_get class_high_throughput  "$service_config" class_high_throughput "$DEFAULT_CLASS_HIGH_THROUGHPUT"
+
+	if [ "$compat_dscp_le" != 1 ] && [ "$class_low_effort" = "$CLASS_LOW_EFFORT" ]; then
+		log info "Falling back to ${CLASS_BULK} for Low Effort class due to Kernel version < ${MIN_KERNEL_DSCP_LE}"
+		class_low_effort="$CLASS_BULK"
+	fi
 
 	get_zones || {
 		log info "Deferring ${action} because lan/wan firewall zones are unavailable"
@@ -1311,7 +1506,7 @@ setup() {
 
 setup_failed() {
 	log warning "Service ${action} failed"
-	[ "${debug:-$DEBUG}" = 1 ] && create_debug_file
+	create_debug_file
 	destroy_table
 	delete_includes
 }
