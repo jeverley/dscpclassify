@@ -92,7 +92,8 @@ _1. When running on older OpenWrt releases with kernels < 5.13 the service defau
 |--- | --- | --- | --- | ---|
 |enabled | boolean | no | 1 | Adopt the DSCP class supplied by a non-WAN client |
 |exclude_class | list | no | cs6, cs7 | Classes to ignore from client class adoption |
-|src_ip | list | no | | Include/Exclude source IPs for class adoption, preface excluded IPs with ! |
+|src_ip | list | no | | Include/Exclude source IPs / sets for class adoption, preface excluded IPs with ! |
+|src_mac | list | no | | Include/Exclude source MACs / sets for class adoption, preface excluded MACs with ! |
 
 ### Section "bulk_client_detection"
 |Name | Type | Required | Default | Description|
@@ -125,15 +126,17 @@ The OpenWrt fw4 rule syntax is outlined in the [OpenWrt Wiki](https://openwrt.or
 |proto | list | no | | Match traffic using the given protocol. Can be one (or several when using list syntax) of `tcp`, `udp`, `udplite`, `icmp`, `esp`, `ah`, `sctp`, or `all`. A protocol name from /etc/protocols is also allowed. |
 |dest | list | no | | Specifies the traffic destination firewall zone. Refers to one of the defined zone names. |
 |dest_ip | list | no | | Match traffic directed to the specified destination IP address, CIDR notations can be used. Set names can be specified with the `@` prefix<sup>1</sup>. |
+|dest_mac | list | no | | Match traffic directed to the specified destination MAC address. Set names can be specified with the `@` prefix<sup>1</sup>. |
 |dest_port | list | no | | Match traffic to the specified source port or port range. |
 |src | list | no | | Specifies the traffic source firewall zone. Refers to one of the defined zone names. |
 |src_ip | list | no | | Match traffic from the specified source IP address, CIDR notations can be used. Set names can be specified with the `@` prefix<sup>1</sup>. |
+|src_mac | list | no | | Match traffic from the specified source MAC address. Set names can be specified with the `@` prefix<sup>1</sup>. |
 |src_port | list | no | | Match traffic from the specified source port or port range. |
 |device | string | no | | Match traffic going in/out of a particular L3 device. |
 |direction | string | no | | Must be used in conjunction with `device`, specifies whether to match traffic travelling `in` or `out`. |
 |counter | boolean | no | 0 | Enables an nft counter that counts connections matched by the rule. |
 
-_1. Vervsions ≥ 2.0 allow a mix of sets, ipv4 and ipv6 addresses._
+_1. Vervsions ≥ 2.0 allow a mix of sets, MAC, ipv4 and ipv6 addresses._
 
 #### Example user rule 📃
 
@@ -154,21 +157,23 @@ config rule
 ```
 
 ### Section "set"
-The set sections in `/etc/config/dscpclassify` use a similar syntax to OpenWrt's firewall, they can be used in conjunction with rules for dynamically populated ip matching.\
+The set sections in `/etc/config/dscpclassify` use a similar syntax to OpenWrt's firewall, they can be used in conjunction with rules to allow re-use of addresses or dynamic list population from external sources.\
 DSCP classify's default rules can be viewed [here](https://github.com/jeverley/dscpclassify/blob/main/etc/config/dscpclassify).
 
-The key difference is that sets can be referenced using dest_ip/src_ip, with their name prefixed with '@'.
+Sets must not must not contain multiple address types (i.e. IPv4 and IPv6 addresses in the same set is unsupported).
+Sets should be referenced using **dest_ip/src_ip/dest_mac/src_mac**, with the set name name prefixed with '@'.
 
 |Name | Type | Required | Default | Description|
 |--- | --- | --- | --- | ---|
 |enabled | boolean | no | 1 | Allows to disable the declaration of the set without the need to delete the section. | 
 |name | string | **yes** | | Name of the set. |
+|entry | list | no | | IP/MAC address or CIDR notation. |
+|loadfile | string | no | | A path URL on the openwrt filesystem to a file containing a list of addresses or CIDRs. |
+|**Advanced** | | | | _**The below config options are not required by most users**_ |
 |comment | string | no | | A user defined comment associated with the set. |
-|family | string | no | | Specifies the address family (`ipv4`, `ipv6`) for the set, if absent the service tries to identify this from the address entries<sup>1</sup>. |
+|family | string | no | | Specifies the address family (`ipv4`, `ipv6`) for the set, if absent the service identifies this from the address entries<sup>1</sup>. |
 |maxelem | uint | no | | Limits the number of entries that can be added to the set. |
 |timeout | uint | no | | Specifies the default timeout for entries added to the set. A value of 0 enables the timeout capability flag on the set, but does not put a timeout on entries. |
-|entry | list | no | | IP address or CIDR notation. |
-|loadfile | string | no | | A path URL on the openwrt filesystem to a file containing a list of CIDRs. |
 
 _1. Vervsions ≥ 2.0 will attempt to autodetect a set's family if the option is not specified._
 
