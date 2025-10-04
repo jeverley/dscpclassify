@@ -36,7 +36,7 @@ The dscpclassify service uses the last 8 bits of the conntrack mark (0x000000**f
 <img src="https://user-images.githubusercontent.com/46714706/188151111-9167e54d-482e-4584-b43b-0759e0ad7561.png" width="80%">
 
 # Service Installation ⚙️
-To install dscpclassify service via command line you can use the following sets of commands.
+To install dscpclassify via command line you can use the following sets of commands.
 
 ### dscpclassify 
 
@@ -222,3 +222,15 @@ It is important that **Ignore DSCP** on ingress is **Allow** in SQM setup otherw
 
 <img src="https://user-images.githubusercontent.com/46714706/190709086-c2e820ed-11ed-4be4-8e57-fba4ab6db190.png" width="50%">
 <img src="https://user-images.githubusercontent.com/46714706/210797512-a2419605-5bd4-469b-8c99-2d881c2c8706.png" width="50%">
+
+
+# Service Uninstall ⚙️
+To remove dscpclassify via command line you can use the following commands.
+
+```
+/etc/init.d/dscpclassify stop
+/etc/init.d/dscpclassify disable
+rm -rf "/etc/dscpclassify.d"
+rm -f "/etc/hotplug.d/iface/21-dscpclassify"
+rm -f "/etc/init.d/dscpclassify"
+```
