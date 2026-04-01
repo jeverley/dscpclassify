@@ -113,7 +113,7 @@ check_minimum_kernel_release() {
 	current_release=$(uname -r)
 	current_major=$(echo "$current_release" | awk -F '.' '{print $1}')
 	current_minor=$(echo "$current_release" | awk -F '.' '{print $2}')
-	
+
 	if [ "$current_major" -gt "$minimum_major" ] || { [ "$current_major" = "$minimum_major" ] && [ "$current_minor" -ge "${minimum_minor:-0}" ]; }; then
 		return 0
 	fi 2>/dev/null
@@ -181,11 +181,11 @@ unique_list() {
 }
 
 nft_element_list() {
-	format_list "$1" ", " "" "{}" 
+	format_list "$1" ", " "" "{}"
 }
 
 nft_interface_list() {
-	format_list "$1" ", " "\"" "{}" 
+	format_list "$1" ", " "\"" "{}"
 }
 
 nft_flag_list() {
@@ -1203,7 +1203,7 @@ create_dscp_mark_rule() {
 
 	config_get_bool wmm_mark_lan "$service_config" wmm_mark_lan "$wmm_mark_lan"
 	[ "$wmm_mark_lan" = 1 ] && post_include "add rule inet $TABLE postrouting oifname \$lan ct mark & \$$NFT_VAR_CT_DSCP vmap @ct_wmm"
-	
+
 	post_include "add rule inet $TABLE postrouting ct mark & \$$NFT_VAR_CT_DSCP vmap @ct_dscp"
 }
 
@@ -1232,7 +1232,7 @@ create_pre_include() {
 	pre_include "define wan = $(nft_interface_list "$wan")"
 
 	pre_include "add table inet $TABLE"
-	[ "$action" = "reload" ] && create_flush_actions 
+	[ "$action" = "reload" ] && create_flush_actions
 
 	pre_include "include \"${VERDICTS}\""
 	pre_include "include \"${MAPS}\""
@@ -1291,11 +1291,8 @@ migrate_config() {
 
 	# Get all section IDs of a given type
 	get_section_ids() {
-		local type="$1" id section_ids
-		for section in $(uci show "$CONFIG" | grep "@${type}\[[0-9]*\]=" | cut -d'=' -f1); do
-			id=$(uci show "$section" | head -n1 | cut -d'=' -f1 | cut -d'.' -f2) || continue
-			section_ids="${section_ids:+$section_ids }$id"
-		done
+		local type="$1" section_ids
+		section_ids="$(uci -X show "$CONFIG" | grep "=${type}$" | cut -d'=' -f1 | cut -d'.' -f2)"
 		[ -n "$section_ids" ] || return 1
 		echo "$section_ids"
 	}
