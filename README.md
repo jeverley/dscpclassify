@@ -1,4 +1,4 @@
-# What is DSCP Classify? ⭐
+# What is DSCP Classify?
 DSCP Classify is a service for applying DSCP class to connection packets (supporting **OpenWrt 22.03 and above**).\
 It can be used with SQM layer cake QoS to manage priority of client connections (VoIP/gaming/downloads/P2P etc) and reduce [Bufferbloat](https://en.wikipedia.org/wiki/Bufferbloat).
 
