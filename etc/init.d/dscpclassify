@@ -1291,11 +1291,8 @@ migrate_config() {
 
 	# Get all section IDs of a given type
 	get_section_ids() {
-		local type="$1" id section_ids
-		for section in $(uci show "$CONFIG" | grep "@${type}\[[0-9]*\]=" | cut -d'=' -f1); do
-			id=$(uci show "$section" | head -n1 | cut -d'=' -f1 | cut -d'.' -f2) || continue
-			section_ids="${section_ids:+$section_ids }$id"
-		done
+		local type="$1" section_ids
+		section_ids="$(uci -X show "$CONFIG" | grep "=${type}$" | cut -d'=' -f1 | cut -d'.' -f2)"
 		[ -n "$section_ids" ] || return 1
 		echo "$section_ids"
 	}
@@ -1385,27 +1382,6 @@ migrate_config() {
 				}
 			done
 			uci delete "$CONFIG.$id"
-			changed=1
-		done
-
-		# Handle type with named sections
-		section_names="$(get_section_names "$from_type")" || return 0
-		for name in $section_names; do
-			options=$(get_section_options "$CONFIG.${name}") || {
-				uci delete "$CONFIG.${name}"
-				changed=1
-				continue
-			}
-			new_id=$(uci add "$CONFIG" "$to_type")
-			for option in $options; do
-				values=$(get_option_values "$CONFIG.${name}.$option") || continue
-				set_option_values "$CONFIG.$new_id.$option" "$values" || {
-					log err "Failed to rename section '$name' from type '$from_type' to '$to_type'"
-					error=1
-					return 1
-				}
-			done
-			uci delete "$CONFIG.${name}"
 			changed=1
 		done
 		return 0
