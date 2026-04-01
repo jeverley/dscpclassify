@@ -1297,17 +1297,6 @@ migrate_config() {
 		echo "$section_ids"
 	}
 
-	# Get all section names of a given type
-	get_section_names() {
-		local type="$1" name section_names
-		for section in $(uci show "$CONFIG" | grep "=${type}" | cut -d'=' -f1); do
-			name=$(uci get "$section.name") || continue
-			section_names="${section_names:+$section_names }$name"
-		done
-		[ -n "$section_names" ] || return 1
-		echo "$section_names"
-	}
-
 	# Get all options of a given section
 	get_section_options() {
 		local section="$1" options
@@ -1362,9 +1351,8 @@ migrate_config() {
 	# Rename a section type
 	rename_section_type() {
 		local from_type="$1" to_type="$2"
-		local section_ids section_names options new_id values
+		local section_ids options new_id values
 
-		# Handle type without named sections
 		section_ids="$(get_section_ids "$from_type")" || return 0
 		for id in $section_ids; do
 			options=$(get_section_options "$CONFIG.$id") || {
