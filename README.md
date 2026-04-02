@@ -61,6 +61,18 @@ chmod +x "/etc/init.d/dscpclassify"
 ### layer_cake_ct.qos
 #### _Ingress DSCP marking for SQM cake requires installation and [configuration](#sqm-configuration-) of 'layer_cake_ct.qos' and the package 'kmod-sched-ctinfo'❗_
 
+##### 25.12 and above
+
+```
+repo="https://raw.githubusercontent.com/jeverley/dscpclassify/main"
+apk update
+apk add kmod-sched-ctinfo
+wget "$repo/usr/lib/sqm/layer_cake_ct.qos" -O "/usr/lib/sqm/layer_cake_ct.qos"
+wget "$repo/usr/lib/sqm/layer_cake_ct.qos.help" -O "/usr/lib/sqm/layer_cake_ct.qos.help"
+```
+
+##### Older OpenWrt versions using opkg
+
 ```
 repo="https://raw.githubusercontent.com/jeverley/dscpclassify/main"
 opkg update
@@ -68,6 +80,7 @@ opkg install kmod-sched-ctinfo
 wget "$repo/usr/lib/sqm/layer_cake_ct.qos" -O "/usr/lib/sqm/layer_cake_ct.qos"
 wget "$repo/usr/lib/sqm/layer_cake_ct.qos.help" -O "/usr/lib/sqm/layer_cake_ct.qos.help"
 ```
+
 # Configuration ⚙️
 The service configuration is located in '/etc/config/dscpclassify'.
 
