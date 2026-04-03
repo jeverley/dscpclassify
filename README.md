@@ -71,7 +71,7 @@ wget "$repo/usr/lib/sqm/layer_cake_ct.qos" -O "/usr/lib/sqm/layer_cake_ct.qos"
 wget "$repo/usr/lib/sqm/layer_cake_ct.qos.help" -O "/usr/lib/sqm/layer_cake_ct.qos.help"
 ```
 
-##### Older OpenWrt versions using opkg
+##### OpenWrt versions using opkg
 
 ```
 repo="https://raw.githubusercontent.com/jeverley/dscpclassify/main"
@@ -127,7 +127,7 @@ _1. When running on older OpenWrt releases with kernels < 5.13 the service defau
 |_min_bytes_ | number | no | 1000000 | Minimum bytes before the connection is classified as high-throughput |
 
 ### Section "rule"
-The rule sections in `/etc/config/dscpclassify` use the same syntax as OpenWrt's firewal, the **class** option is used to specified the desired DSCP.\
+The rule sections in `/etc/config/dscpclassify` use the same syntax as OpenWrt's firewall, the **class** option is used to specified the desired DSCP.\
 The OpenWrt fw4 rule syntax is outlined in the [OpenWrt Wiki](https://openwrt.org/docs/guide-user/firewall/firewall_configuration#rules), dscpclassify default rules can be viewed [here](https://github.com/jeverley/dscpclassify/blob/main/etc/config/dscpclassify)'. 
 
 |Name | Type | Required | Default | Description|
