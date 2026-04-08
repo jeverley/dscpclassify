@@ -20,7 +20,7 @@ QDISC=cake
 
 egress() {
     local qdisc
-    qdisc=$(select_cake $IFACE)
+    qdisc=$(type select_cake &>/dev/null && select_cake $IFACE || echo cake)
     SILENT=1 $TC qdisc del dev $IFACE root
     $TC qdisc add dev $IFACE root $( get_stab_string ) $qdisc \
         bandwidth ${UPLINK}kbit $( get_cake_lla_string ) ${EGRESS_CAKE_OPTS} ${EQDISC_OPTS}
@@ -29,7 +29,7 @@ egress() {
 
 ingress() {
     local qdisc
-    qdisc=$(select_cake $DEV)
+    qdisc=$(type select_cake &>/dev/null && select_cake $DEV || echo cake)
 
     SILENT=1 $TC qdisc del dev $IFACE handle ffff: ingress
     $TC qdisc add dev $IFACE handle ffff: ingress
