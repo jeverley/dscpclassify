@@ -93,7 +93,7 @@ The service configuration is located in '/etc/config/dscpclassify'.
 |class_high_throughput | string | no | af13 | The default DSCP class applied to high-throughput connections |
 |wmm_mark_lan | boolean | no | 0 | Mark packets going out of LAN interfaces with DSCP values respective of [WMM (RFC-8325)](https://datatracker.ietf.org/doc/html/rfc8325#section-4.3) |
 |**Advanced** | | | | _**The below options are typically only required on non-standard setups**_ |
-|_lan_zone_ | list | no | lan | Used to specify LAN firewall zones (lan/guest etc) |
+|_lan_zone_ | list | no | lan | Used to specify LAN firewall zones (`lan`/`guest` etc) |
 |_wan_zone_ | list | no | wan | Used to specify WAN firewall zones |
 |_lan_device_ | list | no | | Used to specify LAN network interfaces (L3 physical interface i.e. `br-lan`) |
 |_wan_device_ | list | no | | Used to specify WAN network interfaces (L3 physical interface) |
@@ -112,7 +112,7 @@ _1. When running on older OpenWrt releases with kernels < 5.13 the service defau
 |Name | Type | Required | Default | Description|
 |--- | --- | --- | --- | ---|
 |enabled | boolean | no | 1 | Detect and classify bulk client connections (i.e. P2P)|
-|class | string | no | | Override the service level class_high_throughput setting |
+|class | string | no | | Override the service level `class_high_throughput` setting |
 |**Advanced** | | | | _**The default configuration for the below should work for most users**_ |
 |_min_connections_ | number | no | 10 | Minimum established connections for a client port to be considered as bulk |
 |_min_bytes_ | number | no | 10000 | Minimum bytes before a client port is classified as bulk |
@@ -121,7 +121,7 @@ _1. When running on older OpenWrt releases with kernels < 5.13 the service defau
 |Name | Type | Required | Default | Description|
 |--- | --- | --- | --- | ---|
 |enabled | boolean | no | 1 | Detect and classify high throughput service connections (i.e. Windows Update/Steam downloads) |
-|class | string | no | | Override the service level class_high_throughput setting |
+|class | string | no | | Override the service level `class_high_throughput` setting |
 |**Advanced** | | | | _**The default configuration for the below should work for most users**_ |
 |_min_connections_ | number | no | 3 | Minimum established connections for a service to be considered as high-throughput |
 |_min_bytes_ | number | no | 1000000 | Minimum bytes before the connection is classified as high-throughput |
@@ -222,15 +222,15 @@ It is important that **Ignore DSCP** on ingress is **Allow** in SQM setup otherw
 
 ### Below is validated working SQM config for use with the service
 
-| Config parameter | Value |
-| ----------- | ----------- |
-| qdisc_advanced | 1 |
-| squash_dscp | 0, to ensure cake does not remove ingress packet DSCP values|
-| **squash_ingress** | **0, to ensure cake looks at packet marks on ingress** |
-| qdisc_really_really_advanced | 1 |
-| iqdisc_opts | nat dual-dsthost ingress diffserv4 |
-| eqdisc_opts | nat dual-srchost ack-filter diffserv4 |
-| **script** | **layer_cake_ct.qos** |
+| Config parameter | Value | Notes |
+| ----------- | ----------- | ----------- |
+| qdisc_advanced | 1 | |
+| squash_dscp | 0 | 1 removes the DSCP after cake processing, 0 preserves DSCP values |
+| **squash_ingress** | **0** | **0 ensures cake does not ignore ingress packet DSCP values** |
+| qdisc_really_really_advanced | 1 | |
+| iqdisc_opts | nat dual-dsthost ingress diffserv4 | diffserv8 allows differentiation of LE/HT traffic |
+| eqdisc_opts | nat dual-srchost ack-filter diffserv4 | diffserv8 allows differentiation of LE/HT traffic |
+| **script** | **layer_cake_ct.qos** | |
 <br />
 
 <img src="https://user-images.githubusercontent.com/46714706/190709086-c2e820ed-11ed-4be4-8e57-fba4ab6db190.png" width="50%">
